@@ -687,6 +687,17 @@
     </div>
   </div>
 
+  <!-- Footer -->
+  <footer style="text-align:center;padding:1.5rem;font-size:0.7rem;color:var(--text-secondary);">
+    <a href="/terms.html" target="_blank" style="color:var(--text-secondary);margin:0 0.5rem;">用户协议</a>
+    <a href="/privacy.html" target="_blank" style="color:var(--text-secondary);margin:0 0.5rem;">隐私政策</a>
+    <span style="margin:0 0.5rem;">Morph.AI © 2026</span>
+    <br>
+    <span id="icpNumber" style="display:none;margin-top:0.25rem;">
+      <a href="https://beian.miit.gov.cn/" target="_blank" style="color:var(--text-secondary);">ICP备案号：待更新</a>
+    </span>
+  </footer>
+
   <!-- Settings Modal -->
   <div class="modal-overlay" id="settingsModal">
     <div class="modal-content">
@@ -709,6 +720,7 @@
               <button class="btn-secondary" id="registerBtn" style="flex: 1; font-size: 0.85rem;">注册</button>
             </div>
             <p id="authMsg" style="font-size: 0.75rem; color: var(--accent-red); min-height: 1rem;"></p>
+            <button class="btn-skip" id="forgotPwBtn" style="font-size:0.7rem;">忘记密码？</button>
           </div>
           <div id="memberBlock" style="display: none; flex-direction: column; gap: 0.75rem;">
             <div style="background: linear-gradient(135deg, rgba(255,149,0,0.12), rgba(255,149,0,0.04)); border: 1px solid rgba(255,149,0,0.25); border-radius: 14px; padding: 1rem;">
@@ -717,6 +729,7 @@
             </div>
             <button class="btn-primary" id="upgradeBtnSettings" style="background: linear-gradient(180deg, #ff9500 0%, #cc7700 100%);">升级为月付会员 ¥19/月</button>
             <button class="btn-secondary" id="logoutBtn" style="color: var(--text-secondary);">退出登录</button>
+            <button class="btn-skip" id="deleteAccountBtn" style="color:var(--accent-red);font-size:0.7rem;">注销账号（不可恢复）</button>
           </div>
         </div>
         

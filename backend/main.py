@@ -204,6 +204,31 @@ async def login(body: LoginRequest):
     token = create_token(user_dict["id"], user_dict["email"])
     return {"access_token": token, "token_type": "bearer", "user": {"id": user_dict["id"], "email": user_dict["email"], "is_trial": bool(user_dict["is_trial"]), "trial_ends_at": user_dict["trial_ends_at"], "membership_expires_at": user_dict["membership_expires_at"]}}
 
+@app.post("/api/auth/reset-password")
+async def reset_password(body: LoginRequest):
+    """Send password reset email (simplified: returns new random password)"""
+    email = validate_email(body.email)
+    db = await get_db()
+    async with db.execute("SELECT * FROM users WHERE email = ?", (email,)) as cursor:
+        user = await cursor.fetchone()
+    if not user:
+        return {"message": "如果该邮箱已注册，重置邮件已发送"}
+    new_password = secrets.token_hex(6)
+    new_hash = hash_password(new_password)
+    await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
+    await db.commit()
+    # In production: send email via SMTP. For MVP, return the new password directly.
+    return {"message": "密码已重置", "new_password": new_password}
+
+@app.delete("/api/auth/delete-account")
+async def delete_account(user: dict = Depends(get_current_user)):
+    db = await get_db()
+    await db.execute("DELETE FROM checkins WHERE user_id = ?", (user["id"],))
+    await db.execute("DELETE FROM push_subscriptions WHERE user_id = ?", (user["id"],))
+    await db.execute("DELETE FROM users WHERE id = ?", (user["id"],))
+    await db.commit()
+    return {"message": "账户已永久删除"}
+
 @app.post("/api/ai/audit")
 async def ai_audit(body: CheckInData, user: dict = Depends(get_current_user)):
     if not check_membership(user): raise HTTPException(status_code=403, detail="会员已过期，请续费后使用AI审计功能")

@@ -272,13 +272,38 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   logoutBtn.addEventListener('click', () => {
-    localStorage.removeItem('ai_fitness_token');
-    localStorage.removeItem('ai_fitness_user');
+    safeRemove('ai_fitness_token');
+    safeRemove('ai_fitness_user');
     authToken = null;
     currentUser = null;
     showToast('已退出登录', 'info');
     updateMembershipUI();
     updateSettingsAuthUI();
+  });
+
+  const forgotPwBtn = document.getElementById('forgotPwBtn');
+  if (forgotPwBtn) forgotPwBtn.addEventListener('click', async () => {
+    const email = setEmail.value.trim();
+    if (!email) { authMsg.innerText = '请先输入邮箱'; return; }
+    try {
+      const data = await apiCall('/auth/reset-password', 'POST', { email, password: '' });
+      alert('新密码: ' + data.new_password + '\n\n请复制保存，登录后可修改。');
+      authMsg.innerText = '';
+    } catch (e) { authMsg.innerText = e.message; }
+  });
+
+  const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+  if (deleteAccountBtn) deleteAccountBtn.addEventListener('click', async () => {
+    if (!confirm('⚠️ 确定要永久删除你的账户和所有数据吗？此操作不可恢复！')) return;
+    if (!confirm('再次确认：所有打卡记录和身体数据将被永久删除。')) return;
+    try {
+      await apiCall('/auth/delete-account', 'DELETE');
+      safeRemove('ai_fitness_token'); safeRemove('ai_fitness_user');
+      safeRemove('ai_fitness_profile'); safeRemove('ai_fitness_history');
+      authToken = null; currentUser = null; profile = null;
+      showToast('账户已删除', 'info');
+      location.reload();
+    } catch (e) { showToast(e.message, 'error'); }
   });
 
   async function syncHistoryFromCloud() {
@@ -755,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Format report output
-      aiReportOutput.innerHTML = parseMarkdown(reportText);
+      aiReportOutput.innerHTML = parseMarkdown(reportText) + '<hr style="margin:1.5rem 0;border-color:var(--panel-border);"><p style="font-size:0.7rem;color:var(--text-secondary);">⚠️ AI建议仅供参考，不构成医疗诊断。在开始任何饮食或运动计划前请咨询专业医师。</p>';
       aiLoading.style.display = 'none';
       aiReportOutput.style.display = 'block';
 
@@ -1130,50 +1155,62 @@ function renderActions(group) {
   const guideNext = document.getElementById('guideNext');
   const guideSkip = document.getElementById('guideSkip');
   let guideStep = 0;
+  let guideActive = false;
   const guideTargets = [
-    { el: '#panelCheckin', text: '👋 从这里开始！每天填写体重、饮食和运动，教练才能为你生成专属审计。' },
-    { el: '#panelGuide', text: '🏋️ 44个动作带Bilibili教学视频，新手也能看得懂、学得会。' },
-    { el: '#panelHistory', text: '📊 查看历史打卡记录和体重趋势，见证自己的蜕变。' }
+    { el: '#panelCheckin', tab: 'checkin', text: '👋 从这里开始！每天填写体重、饮食和运动，教练才能为你生成专属审计。' },
+    { el: '#panelGuide', tab: 'guide', text: '🏋️ 44个动作带Bilibili教学视频，新手也能看得懂、学得会。' },
+    { el: '#panelHistory', tab: 'history', text: '📊 查看历史打卡记录和体重趋势，见证自己的蜕变。' }
   ];
 
-  function startGuide() {
-    if (localStorage.getItem('guide_done')) return;
-    // Switch to checkin tab first
-    const checkinBtn = document.querySelector('[data-tab="checkin"]');
-    if (checkinBtn) checkinBtn.click();
-    guideStep = 0;
-    setTimeout(() => showGuideStep(), 300);
-    guideOverlay.style.display = 'flex';
-  }
-
-  function showGuideStep() {
+  function positionSpot() {
     const t = guideTargets[guideStep];
     const el = document.querySelector(t.el);
-    if (!el || !el.offsetParent) { guideOverlay.style.display = 'none'; return; }
+    if (!el || !el.offsetParent) return;
     const rect = el.getBoundingClientRect();
     guideSpot.style.top = rect.top + 'px';
     guideSpot.style.left = rect.left + 'px';
     guideSpot.style.width = rect.width + 'px';
     guideSpot.style.height = rect.height + 'px';
-    guideSpot.style.borderRadius = '16px';
+  }
+
+  function showGuideStep() {
+    const t = guideTargets[guideStep];
+    // Switch to correct tab so panel is visible
+    const tabBtn = document.querySelector(`[data-tab="${t.tab}"]`);
+    if (tabBtn) tabBtn.click();
+    // Wait for tab animation then position
+    setTimeout(positionSpot, 200);
     guideText.textContent = t.text;
     guideNext.textContent = guideStep >= guideTargets.length - 1 ? '开始使用 🚀' : '下一步 →';
   }
+
+  function startGuide() {
+    if (safeGet('guide_done')) return;
+    guideActive = true;
+    guideStep = 0;
+    guideOverlay.style.display = 'flex';
+    showGuideStep();
+  }
+
+  // Track scroll/resize while guide is active
+  window.addEventListener('scroll', () => { if (guideActive && guideOverlay.style.display === 'flex') positionSpot(); }, { passive: true });
+  window.addEventListener('resize', () => { if (guideActive && guideOverlay.style.display === 'flex') positionSpot(); });
 
   guideNext.addEventListener('click', () => {
     guideStep++;
     if (guideStep >= guideTargets.length) {
       guideOverlay.style.display = 'none';
-      localStorage.setItem('guide_done', '1');
+      guideActive = false;
+      safeSet('guide_done', true);
       return;
     }
     showGuideStep();
   });
   guideSkip.addEventListener('click', () => {
     guideOverlay.style.display = 'none';
-    localStorage.setItem('guide_done', '1');
+    guideActive = false;
+    safeSet('guide_done', true);
   });
-  window.addEventListener('resize', () => { if (guideOverlay.style.display === 'flex') showGuideStep(); });
 
   // ============ FEATURE 3: AI GUEST BLOCK ============
   const aiGuestUpgradeBtn = document.getElementById('aiGuestUpgradeBtn');
@@ -1319,7 +1356,7 @@ function renderActions(group) {
       updateStreakUI();
       renderWeightChart();
       updateGuestUI();
-      if (profile && !localStorage.getItem('guide_done')) {
+      if (profile && !safeGet('guide_done')) {
         setTimeout(startGuide, 600);
       }
     }, 100);
