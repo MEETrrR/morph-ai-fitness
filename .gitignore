@@ -1,0 +1,8 @@
+backend/fitness.db
+backend/venv/
+backend/__pycache__/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+wiz-section.txt

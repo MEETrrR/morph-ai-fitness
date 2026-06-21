@@ -1,0 +1,397 @@
+"""
+AI Fitness Coach Backend - FastAPI
+Membership-based AI fitness coaching platform
+"""
+import os
+import json
+import hmac
+import hashlib
+import base64
+import time
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import aiosqlite
+import httpx
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+
+# --- Config ---
+SECRET_KEY = os.environ.get("SECRET_KEY", "fitness-coach-secret-change-in-production-2024").encode()
+TOKEN_EXPIRE_DAYS = 30
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DB_PATH = os.path.join(os.path.dirname(__file__), "fitness.db")
+FREE_TRIAL_DAYS = 3
+MONTHLY_PRICE = 19  # RMB
+
+app = FastAPI(title="教练.AI API")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], allow_credentials=True)
+
+security = HTTPBearer()
+
+# --- Password Helpers (PBKDF2 + salt, no external dependency) ---
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
+    return f"pbkdf2:{salt}:{h.hex()}"
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, salt, h = stored.split(":")
+        h2 = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
+        return hmac.compare_digest(h, h2.hex())
+    except Exception:
+        return False
+
+# --- Models ---
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class CheckInData(BaseModel):
+    date: Optional[str] = None
+    currentWeight: Optional[float] = None
+    weightCondition: Optional[str] = None
+    stateDescription: Optional[str] = None
+    breakfast: Optional[str] = None
+    lunch: Optional[str] = None
+    dinner: Optional[str] = None
+    tonightExercise: Optional[str] = None
+    exerciseFeedback: Optional[str] = None
+    ultimateGoal: Optional[str] = None
+
+class PaymentRequest(BaseModel):
+    plan: str = "monthly"
+
+class PushSubscription(BaseModel):
+    subscription: dict
+
+# --- Database ---
+async def get_db():
+    db = await aiosqlite.connect(DB_PATH)
+    db.row_factory = aiosqlite.Row
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_trial INTEGER DEFAULT 1,
+            trial_ends_at TEXT,
+            membership_expires_at TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS checkins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            weight REAL,
+            weight_condition TEXT,
+            state_description TEXT,
+            breakfast TEXT,
+            lunch TEXT,
+            dinner TEXT,
+            exercise TEXT,
+            feedback TEXT,
+            goal_flag TEXT,
+            report TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            subscription_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    await db.commit()
+    return db
+
+# --- Token Helpers (HMAC-SHA256, no external JWT dependency) ---
+def _b64_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+def _b64_decode(s: str) -> bytes:
+    s += "=" * (4 - len(s) % 4)
+    return base64.urlsafe_b64decode(s)
+
+def create_token(user_id: int, email: str) -> str:
+    header = _b64_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = _b64_encode(json.dumps({
+        "sub": str(user_id),
+        "email": email,
+        "exp": int(time.time() + TOKEN_EXPIRE_DAYS * 86400)
+    }).encode())
+    sig = _b64_encode(hmac.new(SECRET_KEY, f"{header}.{payload}".encode(), hashlib.sha256).digest())
+    return f"{header}.{payload}.{sig}"
+
+def decode_token(token: str) -> dict:
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("invalid token")
+    header, payload, sig = parts
+    expected = _b64_encode(hmac.new(SECRET_KEY, f"{header}.{payload}".encode(), hashlib.sha256).digest())
+    if not hmac.compare_digest(sig, expected):
+        raise ValueError("invalid signature")
+    data = json.loads(_b64_decode(payload))
+    if data.get("exp", 0) < time.time():
+        raise ValueError("token expired")
+    return data
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = decode_token(credentials.credentials)
+        user_id = int(payload.get("sub"))
+    except (ValueError, TypeError, KeyError) as e:
+        raise HTTPException(status_code=401, detail="无效的登录凭证")
+    db = await get_db()
+    async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor:
+        user = await cursor.fetchone()
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
+    return dict(user)
+
+def check_membership(user: dict) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    if user.get("membership_expires_at") and user["membership_expires_at"] > now:
+        return True
+    if user.get("is_trial") and user.get("trial_ends_at") and user["trial_ends_at"] > now:
+        return True
+    return False
+
+# --- Routes ---
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
+
+@app.post("/api/auth/register")
+async def register(body: RegisterRequest):
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="密码至少6位")
+    db = await get_db()
+    existing = await db.execute("SELECT id FROM users WHERE email = ?", (body.email.lower().strip(),))
+    if await existing.fetchone():
+        raise HTTPException(status_code=400, detail="该邮箱已注册")
+
+    password_hash = hash_password(body.password)
+    trial_ends = (datetime.now(timezone.utc) + timedelta(days=FREE_TRIAL_DAYS)).isoformat()
+
+    cursor = await db.execute(
+        "INSERT INTO users (email, password_hash, is_trial, trial_ends_at) VALUES (?, ?, 1, ?)",
+        (body.email.lower().strip(), password_hash, trial_ends)
+    )
+    await db.commit()
+    user_id = cursor.lastrowid
+
+    token = create_token(user_id, body.email)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user_id,
+            "email": body.email,
+            "is_trial": True,
+            "trial_ends_at": trial_ends,
+            "membership_expires_at": None
+        }
+    }
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest):
+    db = await get_db()
+    async with db.execute("SELECT * FROM users WHERE email = ?", (body.email.lower().strip(),)) as cursor:
+        user = await cursor.fetchone()
+    if not user or not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="邮箱或密码错误")
+
+    user_dict = dict(user)
+    token = create_token(user_dict["id"], user_dict["email"])
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user_dict["id"],
+            "email": user_dict["email"],
+            "is_trial": bool(user_dict["is_trial"]),
+            "trial_ends_at": user_dict["trial_ends_at"],
+            "membership_expires_at": user_dict["membership_expires_at"]
+        }
+    }
+
+@app.post("/api/ai/audit")
+async def ai_audit(body: CheckInData, user: dict = Depends(get_current_user)):
+    if not check_membership(user):
+        raise HTTPException(status_code=403, detail="会员已过期，请续费后使用AI审计功能")
+
+    if not DEEPSEEK_API_KEY:
+        raise HTTPException(status_code=503, detail="AI服务暂未配置，请设置环境变量 DEEPSEEK_API_KEY")
+
+    prompt = f"""你是硬核AI健身教练。用户今日打卡数据：
+- 当前体重: {body.currentWeight} kg ({body.weightCondition})
+- 状态: {body.stateDescription}
+- 中午吃了: {body.lunch}
+- 晚上吃了: {body.dinner}
+- 今日运动: {body.tonightExercise}
+- 身体反馈: {body.exerciseFeedback}
+- 终极目标: {body.ultimateGoal}
+
+请按以下四个模块输出硬核审计报告(Markdown格式)：
+
+## 🚀 模块一：大盘审计与硬核震慑
+分析体重波动生化逻辑，结合目标deadline进行倒计时施压。
+
+## 🛠️ 模块二：干饭代码一键修复
+审计午餐和晚餐，检测隐形碳水/高钠炸弹，给出下一餐具体方案。
+
+## 🏀 模块三：运动与训练性能包注入
+针对今日运动类型给出定制训练补丁、关节保护方案，强制23:30挺尸死线。
+
+## 🚨 模块四：今日教练收盘指令
+热血冲刺口号，催人泪下的死命令。"""
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": "你是一个顶尖运动生化学背景的硬核AI健身教练，语气强硬热血专业。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 2048
+                }
+            )
+            if resp.status_code != 200:
+                err = resp.text[:200]
+                raise HTTPException(status_code=502, detail=f"AI服务异常: {resp.status_code} - {err}")
+            data = resp.json()
+            report = data["choices"][0]["message"]["content"]
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI服务响应超时")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI调用失败: {str(e)}")
+
+    db = await get_db()
+    await db.execute(
+        """INSERT INTO checkins (user_id, date, weight, weight_condition, state_description,
+           breakfast, lunch, dinner, exercise, feedback, goal_flag, report)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user["id"], body.date or datetime.now().strftime("%Y-%m-%d"),
+         body.currentWeight, body.weightCondition, body.stateDescription,
+         body.breakfast, body.lunch, body.dinner,
+         body.tonightExercise, body.exerciseFeedback, body.ultimateGoal,
+         report)
+    )
+    await db.commit()
+    return {"report": report}
+
+@app.get("/api/checkins")
+async def get_checkins(user: dict = Depends(get_current_user)):
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM checkins WHERE user_id = ? ORDER BY created_at DESC LIMIT 30",
+        (user["id"],)
+    ) as cursor:
+        rows = await cursor.fetchall()
+    checkins = []
+    for row in rows:
+        r = dict(row)
+        checkins.append({
+            "id": r["id"],
+            "date": r["date"],
+            "weight": r["weight"],
+            "checkIn": {
+                "date": r["date"],
+                "currentWeight": r["weight"],
+                "weightCondition": r["weight_condition"],
+                "stateDescription": r["state_description"],
+                "breakfast": r["breakfast"],
+                "lunch": r["lunch"],
+                "dinner": r["dinner"],
+                "tonightExercise": r["exercise"],
+                "exerciseFeedback": r["feedback"],
+                "ultimateGoal": r["goal_flag"]
+            },
+            "report": r["report"]
+        })
+    return {"checkins": checkins}
+
+@app.post("/api/payment/create")
+async def create_payment(body: PaymentRequest, user: dict = Depends(get_current_user)):
+    return {
+        "message": "支付接口预留。请配置微信支付商户号后使用。",
+        "qr_url": None,
+        "plan": body.plan,
+        "amount": MONTHLY_PRICE
+    }
+
+@app.get("/api/payment/status")
+async def payment_status(user: dict = Depends(get_current_user)):
+    return {"paid": False, "message": "支付状态检查预留接口"}
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(body: PushSubscription, user: dict = Depends(get_current_user)):
+    db = await get_db()
+    sub_json = json.dumps(body.subscription)
+    # Remove existing subscriptions for this user
+    await db.execute("DELETE FROM push_subscriptions WHERE user_id = ?", (user["id"],))
+    await db.execute("INSERT INTO push_subscriptions (user_id, subscription_json) VALUES (?, ?)", (user["id"], sub_json))
+    await db.commit()
+    return {"message": "订阅成功"}
+
+@app.post("/api/push/send-daily")
+async def send_daily_push():
+    """Scheduled endpoint - call via cron job"""
+    import asyncio
+    db = await get_db()
+    async with db.execute("SELECT * FROM push_subscriptions") as cursor:
+        rows = await cursor.fetchall()
+    results = []
+    for row in rows:
+        try:
+            sub = json.loads(row["subscription_json"])
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://fcm.googleapis.com/fcm/send",
+                    json={
+                        "message": {
+                            "token": sub.get("endpoint", "").split("/")[-1],
+                            "notification": {"title": "🔥 教练喊你打卡了", "body": "今天的数据还没填，打开 Morph.AI 完成今日打卡"},
+                            "webpush": {
+                                "endpoint": sub.get("endpoint", ""),
+                                "keys": {
+                                    "p256dh": sub.get("keys", {}).get("p256dh", ""),
+                                    "auth": sub.get("keys", {}).get("auth", "")
+                                }
+                            }
+                        }
+                    }
+                )
+                results.append({"user_id": row["user_id"], "status": resp.status_code})
+        except Exception as e:
+            results.append({"user_id": row["user_id"], "status": str(e)})
+    return {"sent": len(results), "results": results}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
