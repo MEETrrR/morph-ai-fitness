@@ -1,54 +1,77 @@
 #!/bin/bash
 # ==========================================
-#  教练.AI 阿里云一键部署脚本
-#  用法: bash deploy.sh <你的域名> <DeepSeek_API_Key>
-#  示例: bash deploy.sh coach.fit.com sk-xxxxx
+#  Morph.AI 阿里云一键部署脚本
+#  用法: bash deploy.sh <你的域名>
+#  首次运行会引导配置密钥文件
 # ==========================================
 
 set -e
 
 DOMAIN="$1"
-API_KEY="$2"
+ENV_FILE="/opt/morph-ai-secrets.env"
 
-if [ -z "$DOMAIN" ] || [ -z "$API_KEY" ]; then
-    echo "用法: bash deploy.sh <域名> <DeepSeek_API_Key>"
-    echo "示例: bash deploy.sh coach.fit.com sk-abc123"
+if [ -z "$DOMAIN" ]; then
+    echo "用法: bash deploy.sh <域名>"
+    echo "示例: bash deploy.sh morph.fit"
     exit 1
 fi
 
+# Create secrets file if not exists
+if [ ! -f "$ENV_FILE" ]; then
+    echo "========================================"
+    echo "  首次部署 - 配置密钥"
+    echo "========================================"
+    read -sp "请输入 DeepSeek API Key (sk-...): " API_KEY
+    echo ""
+    # Generate secure random keys
+    SECRET_KEY=$(openssl rand -hex 32)
+    PUSH_SECRET=$(openssl rand -hex 32)
+    cat > "$ENV_FILE" << EOF
+DEEPSEEK_API_KEY=$API_KEY
+SECRET_KEY=$SECRET_KEY
+PUSH_SECRET=$PUSH_SECRET
+FRONTEND_ORIGIN=https://$DOMAIN
+EOF
+    chmod 600 "$ENV_FILE"
+    echo "密钥文件已保存到 $ENV_FILE"
+fi
+
+source "$ENV_FILE"
+
 echo "========================================"
-echo "  教练.AI 部署开始"
+echo "  Morph.AI 部署开始"
 echo "  域名: $DOMAIN"
 echo "========================================"
 
-# 1. 更新系统
+# 1. Update system
 echo "[1/8] 更新系统包..."
 apt update -y && apt upgrade -y
 
-# 2. 安装 Nginx + Python + Certbot
+# 2. Install Nginx + Python + Certbot
 echo "[2/8] 安装运行环境..."
 apt install -y nginx python3 python3-pip python3-venv certbot python3-certbot-nginx
 
-# 3. 创建项目目录
+# 3. Deploy frontend
 echo "[3/8] 部署前端文件..."
-mkdir -p /var/www/coach-ai
-cp -r ./ai-fitness-app/*.html ./ai-fitness-app/*.js ./ai-fitness-app/*.css ./ai-fitness-app/*.json ./ai-fitness-app/*.png /var/www/coach-ai/
+rm -rf /var/www/morph-ai 2>/dev/null || true
+mkdir -p /var/www/morph-ai
+find . -maxdepth 1 -name "*.html" -o -name "*.js" -o -name "*.css" -o -name "*.json" -o -name "*.png" -o -name "*.ico" | xargs -I{} cp {} /var/www/morph-ai/
 
-# 4. 配置 Nginx 前端
+# 4. Configure Nginx
 echo "[4/8] 配置 Nginx..."
-cat > /etc/nginx/sites-available/coach-ai << NGINX
+cat > /etc/nginx/sites-available/morph-ai << NGINX
 server {
     listen 80;
     server_name $DOMAIN;
-    root /var/www/coach-ai;
+    root /var/www/morph-ai;
     index index.html;
 
-    # 前端静态文件
     location / {
         try_files \$uri \$uri/ /index.html;
+        expires 1h;
+        add_header Cache-Control "public";
     }
 
-    # API 反向代理到 FastAPI
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
@@ -59,38 +82,38 @@ server {
 }
 NGINX
 
-ln -sf /etc/nginx/sites-available/coach-ai /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/morph-ai /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
-# 5. SSL 证书
+# 5. SSL
 echo "[5/8] 申请 SSL 证书..."
-certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" --redirect
+certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" --redirect || echo "SSL 申请跳过（域名可能未解析）"
 
-# 6. 部署后端
+# 6. Deploy backend
 echo "[6/8] 部署 FastAPI 后端..."
-mkdir -p /opt/coach-ai-backend
-cp -r ./ai-fitness-app/backend/*.py ./ai-fitness-app/backend/requirements.txt /opt/coach-ai-backend/
+mkdir -p /opt/morph-ai-backend
+cp backend/*.py backend/requirements.txt /opt/morph-ai-backend/
 
-cd /opt/coach-ai-backend
+cd /opt/morph-ai-backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 7. 配置后端为系统服务
+# 7. Systemd service with secrets
 echo "[7/8] 配置后端自动启动..."
-cat > /etc/systemd/system/coach-ai.service << SERVICE
+cat > /etc/systemd/system/morph-ai.service << SERVICE
 [Unit]
-Description=教练.AI FastAPI Backend
+Description=Morph.AI FastAPI Backend
 After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/opt/coach-ai-backend
-Environment="DEEPSEEK_API_KEY=$API_KEY"
-Environment="SECRET_KEY=$(openssl rand -hex 32)"
-ExecStart=/opt/coach-ai-backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/morph-ai-backend
+EnvironmentFile=$ENV_FILE
+ExecStart=/opt/morph-ai-backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 
@@ -98,15 +121,15 @@ RestartSec=5
 WantedBy=multi-user.target
 SERVICE
 
-# 替换前端 API 地址为实际域名
-sed -i "s|http://localhost:8000/api|https://$DOMAIN/api|g" /var/www/coach-ai/app.js
-sed -i "s|http://localhost:8000/api|https://$DOMAIN/api|g" /var/www/coach-ai/ai.js
+# Update frontend API base URL
+sed -i "s|http://localhost:8000/api|https://$DOMAIN/api|g" /var/www/morph-ai/app.js
+sed -i "s|http://localhost:8000/api|https://$DOMAIN/api|g" /var/www/morph-ai/ai.js
 
 systemctl daemon-reload
-systemctl enable coach-ai
-systemctl start coach-ai
+systemctl enable morph-ai
+systemctl restart morph-ai
 
-# 8. 防火墙
+# 8. Firewall
 echo "[8/8] 配置防火墙..."
 ufw allow 80
 ufw allow 443
@@ -117,5 +140,5 @@ echo ""
 echo "========================================"
 echo "  部署完成！"
 echo "  访问: https://$DOMAIN"
-echo "  后端状态: systemctl status coach-ai"
+echo "  后端日志: journalctl -u morph-ai -f"
 echo "========================================"

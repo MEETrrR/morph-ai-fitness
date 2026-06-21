@@ -11,10 +11,11 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onerror="this.onerror=null;console.warn('Chart.js CDN failed');window._chartFallback=true;"></script>
   <script>
     window.onerror = function(msg, url, line) {
-      document.body.innerHTML = '<div style="color:red;padding:2rem;font-size:1.2rem;"><h2>JS Error</h2><p>'+msg+'</p><p>Line: '+line+'</p></div>';
+      var safeMsg = document.createElement('div'); safeMsg.textContent = msg; var safeUrl = document.createElement('div'); safeUrl.textContent = url;
+      document.body.innerHTML = '<div style="color:red;padding:2rem;font-size:1.2rem;"><h2>JS Error</h2><p>'+safeMsg.innerHTML+'</p><p>Line: '+line+'</p></div>';
     };
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js');

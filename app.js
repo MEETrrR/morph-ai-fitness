@@ -4,12 +4,31 @@
 
 const API_BASE = 'http://localhost:8000/api';
 
+// Safe localStorage helper
+function safeGet(key, fallback = null) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; }
+}
+function safeSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn('localStorage full:', e.message); }
+}
+function safeRemove(key) {
+  try { localStorage.removeItem(key); } catch (e) {}
+}
+
+// HTML sanitizer for safe innerHTML
+function sanitizeHTML(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // --- STATE MANAGEMENT ---
-  let profile = JSON.parse(localStorage.getItem('ai_fitness_profile')) || null;
-  let history = JSON.parse(localStorage.getItem('ai_fitness_history')) || [];
-  let authToken = localStorage.getItem('ai_fitness_token') || null;
-  let currentUser = JSON.parse(localStorage.getItem('ai_fitness_user') || 'null');
+  let profile = safeGet('ai_fitness_profile');
+  let history = safeGet('ai_fitness_history') || [];
+  let authToken = safeGet('ai_fitness_token', null);
+  let currentUser = safeGet('ai_fitness_user', null);
   const TOTAL_STEPS = 9;
   let wizStep = 0;
   let wizData = { gender: 'male', age: 21, height: 175, weight: 70, targetWeight: 65, goal: 'fat_loss', deadline: null, illness: '无' };
@@ -127,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 
   function initApp() {
-    const theme = localStorage.getItem('ai_fitness_theme') || 'light';
+    const theme = safeGet('ai_fitness_theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     updateMembershipUI();
 
@@ -319,6 +338,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- ONBOARDING WIZARD ---
 
+  // Recover wizard progress from sessionStorage if crashed
+  const savedWiz = (() => { try { const d = sessionStorage.getItem('wiz_step'); return d ? JSON.parse(d) : null; } catch(e) { return null; } })();
+  if (savedWiz && !profile) { wizStep = savedWiz.step; wizData = savedWiz.data || wizData; }
+
   // Dots
   for (let i = 0; i < TOTAL_STEPS; i++) {
     const dot = document.createElement("div");
@@ -383,9 +406,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateWizard() {
+    // Persist to sessionStorage for crash recovery
     const pct = Math.round((wizStep / (TOTAL_STEPS - 1)) * 100);
     wizProgressFill.style.width = pct + "%";
     wizStepLabel.innerText = (wizStep + 1) + "/" + TOTAL_STEPS;
+
+    try { sessionStorage.setItem('wiz_step', JSON.stringify({ step: wizStep, data: wizData })); } catch(e) {}
 
     document.querySelectorAll(".wiz-dot").forEach((dot, i) => {
       dot.classList.remove("done", "current");
@@ -415,7 +441,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const gText = wizData.gender === "male" ? "男" : "女";
       const goalText = wizData.goal === "fat_loss" ? "🔥 无情减脂" : "💪 硬核增肌";
       const dlText = wizData.deadline || "长期战役";
-      wizSummary.innerHTML = '<div><span>性别</span>　' + gText + '</div><div><span>年龄</span>　' + wizData.age + ' 岁</div><div><span>身高</span>　' + wizData.height + ' cm</div><div><span>当前体重</span>　' + wizData.weight + ' kg</div><div><span>目标体重</span>　' + wizData.targetWeight + ' kg</div><div><span>核心目标</span>　' + goalText + '</div><div><span>期望截止</span>　' + dlText + '</div><div><span>伤病情况</span>　' + wizData.illness + '</div>';
+      wizSummary.textContent = '';
+      const items = [
+        ['性别', gText], ['年龄', wizData.age + ' 岁'], ['身高', wizData.height + ' cm'],
+        ['当前体重', wizData.weight + ' kg'], ['目标体重', wizData.targetWeight + ' kg'],
+        ['核心目标', goalText], ['期望截止', dlText], ['伤病情况', wizData.illness]
+      ];
+      items.forEach(([label, val]) => {
+        const div = document.createElement('div'); div.innerHTML = '<span>' + label + '</span>　' + val; wizSummary.appendChild(div);
+      });
     }
   }
 
@@ -460,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wizDeadline && wizDeadline.value) wizData.deadline = wizDeadline.value;
     if (wizIllness && wizIllness.value.trim()) wizData.illness = wizIllness.value.trim();
     profile = { gender: wizData.gender, age: wizData.age, height: wizData.height, weight: wizData.weight, targetWeight: wizData.targetWeight, deadlineDate: wizData.deadline || null, goal: wizData.goal, illnesses: wizData.illness };
-    localStorage.setItem("ai_fitness_profile", JSON.stringify(profile));
+    safeSet("ai_fitness_profile", profile);
     showToast("运动底座加载完成！教练指令激活。", "success");
     initApp();
   });
@@ -751,7 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch (err) {
       aiLoading.style.display = 'none';
-      aiReportOutput.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--accent-red);"><svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" style="margin-bottom:0.5rem;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><h3>AI 审计连接失败</h3><p style="margin-top:0.5rem;font-size:0.9rem;">' + (err.message || '网络连接超时') + '</p><p style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">请检查网络连接，或登录会员后使用AI审计功能。</p><button class="btn-primary" id="btnRetryAudit" style="max-width:200px;margin:0.75rem auto 0;">🔄 重新审计</button></div>';
+      aiReportOutput.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--accent-red);"><svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" style="margin-bottom:0.5rem;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><h3>AI 审计连接失败</h3><p style="margin-top:0.5rem;font-size:0.9rem;">'+sanitizeHTML(err.message||'网络连接超时')+'</p><p style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">请检查网络连接，或登录会员后使用AI审计功能。</p><button class="btn-primary" id="btnRetryAudit" style="max-width:200px;margin:0.75rem auto 0;">🔄 重新审计</button></div>';
       aiReportOutput.style.display = 'block';
       // Store checkin data for retry
       window._lastCheckinData = checkInData;
@@ -1027,7 +1061,15 @@ function renderActions(group) {
 
   // ============ FEATURE 1: WEIGHT TREND CHART ============
   let weightChart = null;
+  // Chart.js fallback
   function renderWeightChart() {
+    if (window._chartFallback || typeof Chart === 'undefined') {
+      const canvas = document.getElementById('weightChart');
+      const chartEmpty = document.getElementById('chartEmpty');
+      if (canvas) canvas.style.display = 'none';
+      if (chartEmpty) { chartEmpty.style.display = ''; chartEmpty.innerHTML = '📈 图表组件加载中...<br><small>请检查网络后刷新</small>'; }
+      return;
+    }
     const canvas = document.getElementById('weightChart');
     const chartEmpty = document.getElementById('chartEmpty');
     const weightChange = document.getElementById('weightChange');
@@ -1232,7 +1274,7 @@ function renderActions(group) {
     if (!history || history.length === 0) return { current: 0, best: 0 };
     const dates = history.map(h => h.date).filter(d => d);
     if (dates.length === 0) return { current: 0, best: 0 };
-    let current = 1, best = parseInt(localStorage.getItem('streak_best') || '0');
+    let current = 1, best = parseInt((safeGet('streak_best') || 0));
     for (let i = 1; i < dates.length; i++) {
       const prev = new Date(dates[i-1]);
       const curr = new Date(dates[i]);
@@ -1240,7 +1282,7 @@ function renderActions(group) {
       if (diff === 1) { current++; } else { break; }
     }
     best = Math.max(best, current);
-    localStorage.setItem('streak_best', best.toString());
+    safeSet("streak_best", best);
     return { current, best };
   }
 
@@ -1251,8 +1293,8 @@ function renderActions(group) {
     streakBest.textContent = `最长记录: ${s.best} 天`;
     const milestones = [7, 30, 90];
     for (const m of milestones) {
-      if (s.current >= m && parseInt(localStorage.getItem('streak_milestone')||'0') < m) {
-        localStorage.setItem('streak_milestone', m.toString());
+      if (s.current >= m && (safeGet('streak_milestone') || 0) < m) {
+        safeSet("streak_milestone", m);
         showStreakCelebration(m);
         break;
       }
@@ -1292,19 +1334,19 @@ function renderActions(group) {
   // ============ TONE SWITCH ============
   const toneHardcore = document.getElementById('toneHardcore');
   const toneGentle = document.getElementById('toneGentle');
-  let coachTone = localStorage.getItem('coach_tone') || 'hardcore';
+  let coachTone = safeGet('coach_tone') || 'hardcore';
   if (toneHardcore && toneGentle) {
     if (coachTone === 'gentle') { toneHardcore.classList.remove('active'); toneGentle.classList.add('active'); toneGentle.style.color = 'var(--text-primary)'; toneGentle.style.fontWeight = '700'; }
     toneHardcore.addEventListener('click', () => {
       coachTone = 'hardcore';
-      localStorage.setItem('coach_tone', 'hardcore');
+      safeSet('coach_tone', 'hardcore');
       toneHardcore.classList.add('active'); toneHardcore.style.color = 'var(--text-primary)'; toneHardcore.style.fontWeight = '700';
       toneGentle.classList.remove('active'); toneGentle.style.color = 'var(--text-secondary)'; toneGentle.style.fontWeight = '400';
       showToast('教练语气切换为 🔥 硬核模式', 'success');
     });
     toneGentle.addEventListener('click', () => {
       coachTone = 'gentle';
-      localStorage.setItem('coach_tone', 'gentle');
+      safeSet('coach_tone', 'gentle');
       toneGentle.classList.add('active'); toneGentle.style.color = 'var(--text-primary)'; toneGentle.style.fontWeight = '700';
       toneHardcore.classList.remove('active'); toneHardcore.style.color = 'var(--text-secondary)'; toneHardcore.style.fontWeight = '400';
       showToast('教练语气切换为 🌱 温和模式', 'success');
@@ -1371,5 +1413,16 @@ function renderActions(group) {
   // Fix settings date label
   const setDeadlineLabel = document.querySelector('label[for="setDeadline"]');
   if (setDeadlineLabel) setDeadlineLabel.textContent = '期望截止日期';
+
+  // Global unhandled rejection handler
+  window.addEventListener('unhandledrejection', function(event) {
+    console.warn('Unhandled rejection:', event.reason);
+    if (event.reason && event.reason.message) {
+      showToast('操作失败: ' + event.reason.message, 'error');
+    }
+  });
+
+  // Clear wizard session on profile save
+  if (profile) { try { sessionStorage.removeItem('wiz_step'); } catch(e) {} }
 
 });
