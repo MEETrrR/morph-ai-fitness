@@ -304,7 +304,7 @@ async def reset_password(body: LoginRequest):
     await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
     await db.commit()
     # In production: send email via SMTP. For MVP, return the new password directly.
-    return {"message": "密码重置邮件已发送（MVP模式暂不支持邮件，请联系客服重置）"}
+    return {"message": "密码已重置", "new_password": new_password}
 
 @app.delete("/api/auth/delete-account")
 async def delete_account(user: dict = Depends(get_current_user)):
@@ -586,8 +586,6 @@ async def delete_post(post_id: int, user: dict = Depends(get_current_user)):
     await db.commit()
     return {"message": "已删除"}
 
-@app.get("/api/uploads/{filename}")
-
 # --- Social: Profile, Follow, Notifications ---
 @app.get("/api/user/profile")
 async def get_my_profile(user: dict = Depends(get_current_user)):
@@ -660,6 +658,7 @@ async def unread_count(user: dict = Depends(get_current_user)):
 async def read_all(user: dict = Depends(get_current_user)):
     db = await get_db(); await db.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user["id"],)); await db.commit()
     return {"message": "ok"}
+@app.get("/api/uploads/{filename}")
 async def serve_upload(filename: str):
     path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(path): raise HTTPException(status_code=404)
