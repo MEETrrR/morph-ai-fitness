@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -188,6 +188,43 @@
       </div>
     </div>
 
+    <!-- Scenario Selector (after wizard, before main app) -->
+    <div id="scenarioView" class="onboard-wizard" style="display:none;">
+      <div class="wiz-icon" style="margin:1rem auto;">🎯</div>
+      <h2 class="wiz-title">选择你的训练场景</h2>
+      <p class="wiz-desc">教练会根据场景优化动作库和训练计划</p>
+      <div class="scenario-grid" id="scenarioGrid">
+        <div class="scenario-card active" data-scene="home_student">
+          <span style="font-size:2rem;">🏠</span>
+          <strong>居家学生党</strong>
+          <small>自重训练 / 宿舍友好</small>
+        </div>
+        <div class="scenario-card" data-scene="office_worker">
+          <span style="font-size:2rem;">💼</span>
+          <strong>办公室久坐族</strong>
+          <small>矫正体态 / 碎片训练</small>
+        </div>
+        <div class="scenario-card" data-scene="beginner">
+          <span style="font-size:2rem;">🆕</span>
+          <strong>零基础入门</strong>
+          <small>低强度 / 循序渐进</small>
+        </div>
+        <div class="scenario-card" data-scene="fat_loss_rush">
+          <span style="font-size:2rem;">🔥</span>
+          <strong>减脂冲刺党</strong>
+          <small>高强度 / 严格饮食</small>
+        </div>
+        <div class="scenario-card" data-scene="postpartum">
+          <span style="font-size:2rem;">🍼</span>
+          <strong>产后恢复</strong>
+          <small>核心修复 / 骨盆矫正</small>
+          </div>
+      <div style="display:flex;gap:0.75rem;margin-top:1rem;">
+        <button class="btn-skip" id="btnSkipScenario">跳过</button>
+        <button class="btn-primary" id="btnConfirmScenario" style="max-width:250px;">确认场景 · 进入训练 →</button>
+      </div>
+    </div>
+
     <!-- Main Application View (Hidden until onboarded) -->
     <div id="mainAppView" style="display: none; flex-direction: column; gap: 2rem;">
       
@@ -202,6 +239,7 @@
           <span class="app-title">教练.AI</span>
         </div>
         <div class="header-controls">
+          <button class="btn-header-login login-glow" id="headerLoginBtn" style="padding:0.55rem 1.3rem;font-size:0.82rem;">🔑 登录 / 注册</button>
           <button class="btn-icon" id="themeToggle" title="切换暗黑模式">
             <svg viewBox="0 0 24 24">
               <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/>
@@ -273,7 +311,32 @@
             </div>
           </div>
 
-          <!-- Streak & Weight Trend -->
+<!-- Streak & Weight Trend -->
+          <div class="glass-panel" id="levelCard" style="padding: 1rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+              <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#0a84ff,#30d158);display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;color:#fff;" id="levelBadge">1</div>
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-weight:700;font-size:0.85rem;" id="levelName">健身小白</span>
+                  <span style="font-size:0.7rem;color:var(--text-secondary);" id="levelPoints">0 XP</span>
+                </div>
+                <div class="meter-track" style="height:6px;margin-top:0.35rem;">
+                  <div class="meter-fill" id="levelProgressFill" style="width:0;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+                    <!-- Achievements Preview Card -->
+          <div class="glass-panel" id="achPreviewCard" style="padding: 0.75rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+              <span style="font-weight:700;font-size:0.8rem;">🏆 我的徽章</span>
+              <span style="font-size:0.75rem;color:var(--accent-color);font-weight:700;cursor:pointer;" id="achViewAll">查看全部 →</span>
+            </div>
+            <div class="badge-grid" id="achPreviewBadges" style="grid-template-columns:repeat(4,1fr);gap:0.4rem;"></div>
+          </div>
+
+<!-- Streak & Weight Trend -->
           <div class="glass-panel" id="streakCard" style="padding: 1rem;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
               <div>
@@ -300,9 +363,14 @@
           <!-- Navigation Menu -->
           <div class="glass-panel" style="padding: 1rem;">
             <nav class="tab-list">
+<button class="tab-btn" data-tab="achievements" style="display:none;"></button>
               <button class="tab-btn active" data-tab="checkin">
                 <svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
                 <span>每日打卡</span>
+              </button>
+              <button class="tab-btn" data-tab="diet">
+                <svg viewBox="0 0 24 24"><path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41L13.41 13l1.47-1.47z"/></svg>
+                <span>饮食AI</span>
               </button>
               <button class="tab-btn" data-tab="guide">
                 <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
@@ -311,6 +379,16 @@
               <button class="tab-btn" data-tab="history">
                 <svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
                 <span>历史</span>
+              </button>
+              
+              <button class="tab-btn" data-tab="community">
+                <svg viewBox="0 0 24 24"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>
+                <span>社区</span>
+              </button>
+              <button class="tab-btn" data-tab="profile">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+                <span>我的</span>
+                <span class="notif-badge" id="notifBadge" style="display:none;">0</span>
               </button>
             </nav>
           </div>
@@ -629,7 +707,104 @@
             </div>
           </div>
 
-          <!-- Tab 4: History Logs -->
+          <!-- Tab: Diet AI Assistant -->
+          <div class="glass-panel tab-panel" id="panelDiet">
+            <div id="dietStats" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+              <span style="background:var(--accent-glow);padding:0.4rem 0.8rem;border-radius:10px;font-size:0.8rem;font-weight:700;">🔥 今日: <span id="dietTotalCal">0</span> kcal</span>
+              <span style="font-size:0.75rem;color:var(--text-secondary);">记录了 <span id="dietCount">0</span> 次</span>
+            </div>
+            <div id="dietMessages" style="display:flex;flex-direction:column;gap:0.5rem;max-height:50vh;overflow-y:auto;margin-bottom:0.75rem;">
+              <div class="diet-msg ai">👋 我是你的AI营养师！告诉我你吃了什么，或者拍张照片，我帮你分析热量和营养。</div>
+            </div>
+            <div id="dietTyping" style="display:none;color:var(--text-secondary);font-size:0.8rem;padding:0.5rem;">💭 分析中...</div>
+            <div style="display:flex;gap:0.5rem;align-items:flex-end;">
+              <input type="text" id="dietInput" class="premium-input" placeholder="我刚吃了..." style="flex:1;">
+              <label for="dietPhotoInput" style="cursor:pointer;padding:0.7rem;border-radius:12px;background:var(--panel-bg);border:1px solid var(--panel-border);">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="var(--text-secondary)"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+              </label>
+              <input type="file" id="dietPhotoInput" accept="image/*" capture="camera" style="display:none;">
+              <button class="btn-primary" id="dietSendBtn" style="width:auto;padding:0.7rem 1rem;">发送</button>
+            </div>
+          </div>
+
+          <!-- Tab 5: Community -->
+          <div class="glass-panel tab-panel" id="panelCommunity">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+              <h3 class="section-title" style="margin:0;">👥 社区</h3>
+              <button class="btn-primary" id="btnCreatePost" style="width:auto;padding:0.5rem 1rem;">+ 发帖</button>
+            </div>
+            <div class="community-cats" id="communityCats">
+              <button class="ccat active" data-cat="">全部</button>
+              <button class="ccat" data-cat="fat_loss">🔥 减脂</button>
+              <button class="ccat" data-cat="muscle_gain">💪 增肌</button>
+              <button class="ccat" data-cat="diet">🍱 饮食</button>
+              <button class="ccat" data-cat="exercise">🏋️ 动作</button>
+              <button class="ccat" data-cat="progress">📸 对比</button>
+              <button class="ccat" data-cat="qa">❓ 问答</button>
+            </div>
+            <div class="community-sort" style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+              <button class="csort active" data-sort="new">最新</button>
+              <button class="csort" data-sort="hot">最热</button>
+            </div>
+            <div id="communityPosts" class="community-list"></div>
+            <div id="communityLoading" style="text-align:center;padding:1rem;color:var(--text-secondary);display:none;">加载中...</div>
+          </div>
+
+          <!-- Tab 6: My Profile -->
+          <div class="glass-panel tab-panel" id="panelProfile">
+            <div id="profileContent"><div style="text-align:center;padding:2rem;"><div class="spinner"></div></div></div>
+          </div>
+
+          <!-- Tab 7: Notifications -->
+          <div class="glass-panel tab-panel" id="panelNotifications">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+              <h3 class="section-title" style="margin:0;">🔔 通知</h3>
+              <button class="btn-skip" id="btnReadAll">全部已读</button>
+            </div>
+            <div id="notificationsList"></div>
+          </div>
+        </div>
+          <div class="glass-panel tab-panel" id="panelAchievements">
+            <h3 class="section-title">🏆 成就殿堂</h3>
+            
+            <!-- Top Stats Bar -->
+            <div class="ach-stats-row" id="achStatsRow">
+              <div class="ach-stat big">
+                <div class="ach-stat-icon">⭐</div>
+                <div class="ach-stat-num" id="achTotalPoints">0</div>
+                <div class="ach-stat-label">总积分</div>
+              </div>
+              <div class="ach-stat">
+                <div class="ach-stat-icon">🏅</div>
+                <div class="ach-stat-num" id="achBadgeCount">0</div>
+                <div class="ach-stat-label">徽章</div>
+              </div>
+              <div class="ach-stat">
+                <div class="ach-stat-icon">👥</div>
+                <div class="ach-stat-num" id="achInviteCount">0</div>
+                <div class="ach-stat-label">已邀请</div>
+              </div>
+              <div class="ach-stat">
+                <div class="ach-stat-icon">🎁</div>
+                <div class="ach-stat-num" id="achInviteReward">0</div>
+                <div class="ach-stat-label">奖励(月)</div>
+              </div>
+            </div>
+
+            <!-- Badge Categories -->
+            <div class="badge-section" id="badgeSections"></div>
+
+            <!-- Invite Section -->
+            <div style="border:1px solid rgba(255,149,0,0.3);border-radius:16px;padding:1.25rem;margin-top:1.5rem;background:rgba(255,149,0,0.04);">
+              <h4 style="margin-bottom:0.5rem;">🎁 邀请好友 · 赚会员</h4>
+              <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem;">好友注册并开通会员，你自动获得 1 个月免费</p>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <input type="text" id="inviteCodeDisplay" class="premium-input" style="flex:1;min-width:140px;" readonly placeholder="登录后生成">
+                <button class="btn-primary" id="btnCopyInvite" style="width:auto;">📋 复制</button>
+                <button class="btn-secondary" id="btnSharePoster2" style="width:auto;">📤</button>
+              </div>
+            </div>
+          </div>
           <div class="glass-panel tab-panel" id="panelHistory">
             <h3 class="section-title">
               <svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
@@ -660,6 +835,11 @@
       <button class="btab" data-tab="history">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
         <span>历史</span>
+      </button>
+      
+      <button class="btab" data-tab="community">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>
+        <span>社区</span>
       </button>
     </nav>
 
@@ -697,6 +877,26 @@
       <a href="https://beian.miit.gov.cn/" target="_blank" style="color:var(--text-secondary);">ICP备案号：待更新</a>
     </span>
   </footer>
+
+  <!-- Login Modal (Standalone, accessible from anywhere) -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3>👤 登录 / 注册</h3>
+        <button class="btn-icon" id="closeLoginModal" style="width:32px;height:32px;"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <input type="email" id="loginEmail" class="premium-input" placeholder="输入邮箱">
+        <input type="password" id="loginPassword" class="premium-input" placeholder="输入密码">
+        <div style="display:flex;gap:0.5rem;">
+          <button class="btn-primary" id="loginSubmitBtn" style="flex:1;">登录</button>
+          <button class="btn-secondary" id="loginRegisterBtn" style="flex:1;">注册</button>
+        </div>
+        <p id="loginMsg" style="font-size:0.75rem;color:var(--accent-red);min-height:1rem;"></p>
+        <button class="btn-skip" id="loginForgotBtn">忘记密码？</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Settings Modal -->
   <div class="modal-overlay" id="settingsModal">
@@ -853,6 +1053,36 @@
 
   <!-- Share Poster Canvas (hidden) -->
   <canvas id="shareCanvas" width="600" height="800" style="display:none;"></canvas>
+
+  <!-- Create Post Modal -->
+  <div class="modal-overlay" id="createPostModal">
+    <div class="modal-content" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>✍️ 发布帖子</h3>
+        <button class="btn-icon" id="closeCreatePost" style="width:32px;height:32px;"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <select id="postCategory" class="premium-select"><option value="fat_loss">🔥 减脂心得</option><option value="muscle_gain">💪 增肌分享</option><option value="diet">🍱 饮食打卡</option><option value="exercise">🏋️ 动作讨论</option><option value="progress">📸 前后对比</option><option value="qa">❓ 新手问答</option></select>
+        <input type="text" id="postTitle" class="premium-input" placeholder="标题（至少2个字）" maxlength="100">
+        <textarea id="postContent" class="premium-input" style="min-height:120px;resize:vertical;" placeholder="分享你的经验...（至少5个字）" maxlength="500"></textarea>
+        <input type="file" id="postImage" accept="image/*" style="font-size:0.8rem;">
+        <p style="font-size:0.65rem;color:var(--text-secondary);">支持 jpg/png/gif，最大5MB。请勿上传违规图片。</p>
+        <button class="btn-primary" id="btnSubmitPost">发布</button>
+        <p id="postMsg" style="font-size:0.75rem;color:var(--accent-red);min-height:1rem;"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Post Detail Modal -->
+  <div class="modal-overlay" id="postDetailModal">
+    <div class="modal-content" style="max-width:600px;max-height:85vh;overflow-y:auto;">
+      <div class="modal-header">
+        <h3 id="postDetailTitle">帖子详情</h3>
+        <button class="btn-icon" id="closePostDetail" style="width:32px;height:32px;"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+      </div>
+      <div class="modal-body" id="postDetailContent"></div>
+    </div>
+  </div>
 
   <!-- Include App Logic -->
   <script src="ai.js"></script>

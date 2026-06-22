@@ -1462,4 +1462,150 @@ function renderActions(group) {
   // Clear wizard session on profile save
   if (profile) { try { sessionStorage.removeItem('wiz_step'); } catch(e) {} }
 
+
+
+
+  // ===== GAME SYSTEM + PROFILE + COMMUNITY + DIET + LOGIN + SCENARIO =====
+  var safeGet3 = function(k,f) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : (f !== undefined ? f : null); } catch(e) { return f; } };
+  var safeSet3 = function(k,v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} };
+  var serverUrl = "http://localhost:8000";
+  var gameState = safeGet3("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
+  var LEVELS = [{name:"健身小白",min:0,ico:"🌱"},{name:"入门学徒",min:100,ico:"🌿"},{name:"进阶勇士",min:300,ico:"⚔️"},{name:"铁血战士",min:800,ico:"🛡️"},{name:"变形金刚",min:2000,ico:"🔮"},{name:"终极猎手",min:5000,ico:"👑"},{name:"传奇战神",min:12000,ico:"💎"}];
+  var BADGES = [{id:"streak3",cat:"🔥 连签",name:"初出茅庐",ico:"🔥",cond:"streak3",desc:"连续3天"},{id:"streak7",cat:"🔥 连签",name:"钢铁意志",ico:"💎",cond:"streak7",desc:"连续7天"},{id:"streak30",cat:"🔥 连签",name:"不死战神",ico:"👑",cond:"streak30",desc:"连续30天"},{id:"weight5",cat:"⚖️ 体重",name:"小有成就",ico:"🎯",cond:"weight5",desc:"变化5kg"},{id:"weight10",cat:"⚖️ 体重",name:"十斤大关",ico:"🏆",cond:"weight10",desc:"变化10kg"},{id:"checkin10",cat:"📝 打卡",name:"十全十美",ico:"✅",cond:"checkin10",desc:"10次打卡"},{id:"checkin50",cat:"📝 打卡",name:"风雨无阻",ico:"🌧️",cond:"checkin50",desc:"50次打卡"},{id:"guide5",cat:"🏋️ 运动",name:"全面开火",ico:"🏀",cond:"guide5",desc:"练过5部位"},{id:"invite1",cat:"🤝 社交",name:"第一个邀请",ico:"📨",cond:"invite1",desc:"邀请1人"},{id:"invite5",cat:"🤝 社交",name:"传播大使",ico:"📢",cond:"invite5",desc:"邀请5人"}];
+
+  function addPoints(n) { gameState.points += n; safeSet3("game_state", gameState); updateLevelUI(); checkBadges(); }
+  function getLevel() { var lv = LEVELS[0]; for (var i = LEVELS.length-1; i >= 0; i--) { if (gameState.points >= LEVELS[i].min) { lv = LEVELS[i]; break; } } var idx = LEVELS.indexOf(lv); var nextMin = idx < LEVELS.length-1 ? LEVELS[idx+1].min : lv.min; var prog = nextMin > lv.min ? Math.round((gameState.points - lv.min) / (nextMin - lv.min) * 100) : 100; return {name:lv.name,ico:lv.ico,level:idx+1,prog:prog}; }
+  function updateLevelUI() { var lv = getLevel(); var badge = document.getElementById("levelBadge"); var name = document.getElementById("levelName"); var pts = document.getElementById("levelPoints"); var fill = document.getElementById("levelProgressFill"); if (badge) badge.textContent = lv.level; if (name) name.textContent = lv.ico + " " + lv.name; if (pts) pts.textContent = gameState.points + " XP"; if (fill) fill.style.width = lv.prog + "%"; }
+  function checkBadges() { var s = calcStreak(); var wc = profile ? Math.abs((history.length>0?history[0].weight:profile.weight) - profile.weight) : 0; var checks = history.length; var muscles = (gameState._musclesTrained||[]).length; var views = gameState.guideViews||0; var inv = gameState.invited||0; var conds = {streak3:s.current>=3,streak7:s.current>=7,streak30:s.current>=30,weight5:wc>=5,weight10:wc>=10,checkin10:checks>=10,checkin50:checks>=50,guide5:muscles>=5,invite1:inv>=1,invite5:inv>=5}; BADGES.forEach(function(b) { if (conds[b.cond] && gameState.earnedBadges.indexOf(b.id) < 0) { gameState.earnedBadges.push(b.id); safeSet3("game_state", gameState); } }); }
+
+  function renderAchievements() {
+    var badgeSections = document.getElementById("badgeSections"); if (!badgeSections) return;
+    var s = calcStreak(); var wc = profile ? Math.abs((history.length>0?history[0].weight:profile.weight) - profile.weight) : 0;
+    var checks = history.length; var muscles = (gameState._musclesTrained||[]).length; var views = gameState.guideViews||0; var inv = gameState.invited||0;
+    var prog = {streak3:s.current,streak7:s.current,streak30:s.current,weight5:wc,weight10:wc,checkin10:checks,checkin50:checks,guide5:muscles,invite1:inv,invite5:inv};
+    var maxes = {streak3:3,streak7:7,streak30:30,weight5:5,weight10:10,checkin10:10,checkin50:50,guide5:5,invite1:1,invite5:5};
+    var cats = {}; BADGES.forEach(function(b) { if (!cats[b.cat]) cats[b.cat] = []; cats[b.cat].push(b); });
+    badgeSections.innerHTML = "";
+    Object.keys(cats).forEach(function(cat) {
+      var sec = document.createElement("div"); sec.innerHTML = '<h4 style="font-size:0.85rem;font-weight:700;margin:1rem 0 0.5rem;">' + cat + '</h4>';
+      var grid = document.createElement("div"); grid.className = "badge-grid";
+      cats[cat].forEach(function(b) {
+        var earned = gameState.earnedBadges.indexOf(b.id) >= 0;
+        var p = earned ? 100 : Math.min(99, Math.round((prog[b.cond]||0) / (maxes[b.cond]||1) * 100));
+        var div = document.createElement("div"); div.className = "badge-item " + (earned ? "earned" : "locked");
+        div.innerHTML = '<span>' + b.ico + '</span><strong>' + b.name + '</strong><small>' + (earned ? "✅" : p + "%") + '</small>' + (earned ? "" : '<div class="badge-bar"><div class="badge-bar-fill" style="width:' + p + '%"></div></div>');
+        grid.appendChild(div);
+      });
+      sec.appendChild(grid); badgeSections.appendChild(sec);
+    });
+    var tp = document.getElementById("achTotalPoints"); var bc = document.getElementById("achBadgeCount");
+    if (tp) tp.textContent = gameState.points; if (bc) bc.textContent = gameState.earnedBadges.length + "/" + BADGES.length;
+    var preview = document.getElementById("achPreviewBadges");
+    if (preview) { preview.innerHTML = ""; BADGES.slice(0,6).forEach(function(b) { var e = gameState.earnedBadges.indexOf(b.id) >= 0; preview.innerHTML += '<div class="badge-item ' + (e ? "earned" : "locked") + '"><span style="font-size:1.1rem;">' + b.ico + '</span></div>'; }); }
+  }
+
+  function calcStreak() {
+    if (!history || !history.length) return { current: 0, best: 0 };
+    var dates = history.map(function(h) { return h.date; }).filter(function(d) { return d; });
+    var cur = 1, best = safeGet3("streak_best") || 0;
+    for (var i = 1; i < dates.length; i++) { var diff = Math.round((new Date(dates[i-1]) - new Date(dates[i])) / 86400000); if (diff === 1) cur++; else break; }
+    best = Math.max(best, cur); safeSet3("streak_best", best);
+    return { current: cur, best: best };
+  }
+  function updateStreakUI() { var sc = document.getElementById("streakCount"); var sb = document.getElementById("streakBest"); if (!sc || !sb) return; var s = calcStreak(); sc.textContent = s.current + " 天"; sb.textContent = "最长记录: " + s.best + " 天"; }
+
+  // PROFILE
+  window._loadProfile = async function() {
+    var pc = document.getElementById("profileContent"); if (!pc) return;
+    if (!authToken) { pc.innerHTML = '<div class="empty-state"><h3>请先登录</h3><p>登录后查看个人资料</p><button class="btn-primary" onclick="window._openLogin()">前往登录</button></div>'; return; }
+    try { myProfile = await apiCall("/user/profile"); renderProfile(); loadMyPosts2(); updateNotifBadge2(); } catch(e) {}
+  };
+  var myProfile = null;
+  function renderProfile() {
+    if (!myProfile || !profileContent) return;
+    var lv = getLevel(); var avatarUrl = myProfile.avatar_path ? serverUrl + "/api/uploads/" + myProfile.avatar_path : "";
+    var avHTML = avatarUrl ? '<img src="' + avatarUrl + '" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid var(--accent-color);">' : '<div style="width:70px;height:70px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-size:2rem;">👤</div>';
+    var memHTML = myProfile.membership_expires_at ? '<span style="color:var(--accent-orange);">👑 会员至 ' + myProfile.membership_expires_at.slice(0,10) + '</span>' : (myProfile.is_trial ? '<span style="color:var(--accent-green);">🎁 免费试用中</span>' : '<span>未开通会员</span>');
+    profileContent.innerHTML = '<div style="text-align:center;margin-bottom:1.5rem;"><label style="cursor:pointer;">' + avHTML + '<input type="file" id="avatarInput" accept="image/*" style="display:none;"></label><h3>' + (myProfile.nickname||"用户"+myProfile.user_id) + '</h3><p style="font-size:0.8rem;color:var(--text-secondary);">' + lv.ico + ' Lv.' + lv.level + ' ' + lv.name + '</p><p style="font-size:0.75rem;">' + memHTML + '</p></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:1rem;"><div class="profile-stat-box"><strong>' + (myProfile.checkins_count||0) + '</strong><small>打卡</small></div><div class="profile-stat-box"><strong>' + calcStreak().current + '</strong><small>连续</small></div><div class="profile-stat-box"><strong>' + ((gameState._musclesTrained||[]).length) + '</strong><small>部位</small></div></div><div class="badge-grid" id="profileBadges2"></div><div style="margin-top:1rem;"><h4>📝 我的帖子</h4><div id="myPosts2"></div></div>';
+    var ai = document.getElementById("avatarInput"); if (ai) ai.addEventListener("change", async function(e) { var f = e.target.files[0]; if (!f) return; var fd = new FormData(); fd.append("avatar", f); try { await fetch(API_BASE + "/user/avatar", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); showToast("头像已更新!","success"); window._loadProfile(); } catch(e){ showToast("上传失败","error"); } });
+    var bg = document.getElementById("profileBadges2"); if (bg) BADGES.forEach(function(b) { var e = gameState.earnedBadges.indexOf(b.id) >= 0; bg.innerHTML += '<div class="badge-item ' + (e?"earned":"locked") + '"><span>' + b.ico + '</span><strong>' + b.name + '</strong></div>'; });
+  }
+  async function loadMyPosts2() { if (!authToken) return; try { var d = await apiCall("/community/posts?sort=new&page=1"); var mp = d.posts.filter(function(p) { return myProfile && p.user_id === myProfile.user_id; }).slice(0,3); var c = document.getElementById("myPosts2"); if (c) c.innerHTML = mp.map(function(p) { return '<div class="community-post" onclick="window._openPost(' + p.id + ')"><span class="cp-cat">' + p.category + '</span><div class="cp-title">' + (p.title||"").replace(/</g,"&lt;") + '</div></div>'; }).join("") || '<p style="color:var(--text-secondary);font-size:0.8rem;">暂无帖子</p>'; } catch(e) {} }
+
+  // COMMUNITY
+  var currentCat = ""; var currentSort = "new"; var currentPage = 1;
+  var createPostModal = document.getElementById("createPostModal"); var postDetailModal = document.getElementById("postDetailModal");
+  async function loadCommunityPosts() {
+    var cp = document.getElementById("communityPosts"); var cl = document.getElementById("communityLoading"); if (!cp) return; if (cl) cl.style.display = "block";
+    try { var d = await apiCall("/community/posts?category=" + currentCat + "&sort=" + currentSort + "&page=" + currentPage); cp.innerHTML = d.posts.map(function(p) { var im = p.image_path ? '<img src="' + serverUrl + '/api/uploads/' + p.image_path + '" class="cp-image" loading="lazy">' : ""; return '<div class="community-post" onclick="window._openPost(' + p.id + ')"><span class="cp-cat">' + p.category + '</span><div class="cp-title">' + (p.title||"").replace(/</g,"&lt;") + '</div><div class="cp-meta"><span>' + (p.email||"") + '</span><span>❤ ' + (p.likes_count||0) + '</span><span>💬 ' + (p.comments_count||0) + '</span></div>' + im + '</div>'; }).join(""); } catch(e) { if (cp) cp.innerHTML = '<p style="text-align:center;color:var(--text-secondary);">加载失败</p>'; }
+    if (cl) cl.style.display = "none";
+  }
+  window._openPost = async function(id) { if (!postDetailModal) return; postDetailModal.classList.add("active"); document.getElementById("postDetailContent").innerHTML = '<div style="text-align:center;padding:2rem;"><div class="spinner"></div></div>'; try { var p = await apiCall("/community/posts/" + id); var im = p.image_path ? '<img src="' + serverUrl + '/api/uploads/' + p.image_path + '" class="community-detail-image">' : ""; var comments = (p.comments||[]).map(function(c) { return '<div class="comment-item"><span class="cm-user">' + (c.email||"") + '</span> ' + (c.content||"").replace(/</g,"&lt;") + '</div>'; }).join(""); document.getElementById("postDetailContent").innerHTML = '<span class="cp-cat">' + p.category + '</span><h3>' + (p.title||"").replace(/</g,"&lt;") + '</h3><div class="cp-meta">' + (p.email||"") + '</div>' + im + '<p style="margin:0.75rem 0;">' + (p.content||"").replace(/</g,"&lt;") + '</p><div style="display:flex;gap:0.5rem;margin-bottom:1rem;"><button class="btn-secondary btn-sm" onclick="window._likePost(' + p.id + ')">❤ ' + (p.likes_count||0) + '</button><button class="btn-secondary btn-sm" onclick="window._reportPost(' + p.id + ')">🚩 举报</button></div><h4>评论</h4><div>' + (comments || '<p style="color:var(--text-secondary);">暂无评论</p>') + '</div><div class="comment-input-row"><input type="text" id="commentInput" class="premium-input" placeholder="写评论..."><button class="btn-primary btn-sm" onclick="window._addComment(' + p.id + ')" style="width:auto;">发送</button></div>'; } catch(e) { document.getElementById("postDetailContent").innerHTML = '<p>加载失败</p>'; } };
+  window._likePost = async function(id) { try { await apiCall("/community/posts/" + id + "/like", "POST"); showToast("已点赞","info"); loadCommunityPosts(); } catch(e) { showToast(e.message,"error"); } };
+  window._reportPost = async function(id) { try { await apiCall("/community/posts/" + id + "/report", "POST"); showToast("举报已提交","success"); } catch(e) { showToast(e.message,"error"); } };
+  window._addComment = async function(id) { var input = document.getElementById("commentInput"); if (!input || !input.value.trim()) return; try { var fd = new FormData(); fd.append("content", input.value); var res = await fetch(API_BASE + "/community/posts/" + id + "/comments", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("发送失败"); input.value = ""; showToast("评论成功","success"); window._openPost(id); } catch(e) { showToast(e.message,"error"); } };
+  var btnCP = document.getElementById("btnCreatePost"); if (btnCP) btnCP.addEventListener("click", function() { if (createPostModal) createPostModal.classList.add("active"); });
+  var btnCC = document.getElementById("closeCreatePost"); if (btnCC) btnCC.addEventListener("click", function() { if (createPostModal) createPostModal.classList.remove("active"); });
+  var btnCD = document.getElementById("closePostDetail"); if (btnCD) btnCD.addEventListener("click", function() { if (postDetailModal) postDetailModal.classList.remove("active"); });
+  document.querySelectorAll(".ccat").forEach(function(b) { b.addEventListener("click", function() { document.querySelectorAll(".ccat").forEach(function(x) { x.classList.remove("active"); }); b.classList.add("active"); currentCat = b.dataset.cat; currentPage = 1; loadCommunityPosts(); }); });
+  document.querySelectorAll(".csort").forEach(function(b) { b.addEventListener("click", function() { document.querySelectorAll(".csort").forEach(function(x) { x.classList.remove("active"); }); b.classList.add("active"); currentSort = b.dataset.sort; currentPage = 1; loadCommunityPosts(); }); });
+  var btnSP = document.getElementById("btnSubmitPost"); if (btnSP) btnSP.addEventListener("click", async function() { var msg = document.getElementById("postMsg"); var fd = new FormData(); fd.append("title", document.getElementById("postTitle").value.trim()); fd.append("content", document.getElementById("postContent").value.trim()); fd.append("category", document.getElementById("postCategory").value); var img = document.getElementById("postImage").files[0]; if (img) fd.append("image", img); msg.innerText = "发布中..."; try { var res = await fetch(API_BASE + "/community/posts", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) { var er = await res.json().catch(function(){ return {}; }); throw new Error(er.detail || "发布失败"); } createPostModal.classList.remove("active"); document.getElementById("postTitle").value = ""; document.getElementById("postContent").value = ""; document.getElementById("postImage").value = ""; msg.innerText = ""; showToast("发布成功！","success"); loadCommunityPosts(); } catch(e) { msg.innerText = e.message; } });
+
+  // DIET AI
+  var dietMessages = document.getElementById("dietMessages"); var dietInput = document.getElementById("dietInput"); var dietSendBtn = document.getElementById("dietSendBtn"); var dietPhotoInput = document.getElementById("dietPhotoInput"); var dietTypingEl = document.getElementById("dietTyping");
+  function addDietMsg(text, type) { if (!dietMessages) return; var d = document.createElement("div"); d.className = "diet-msg " + type; d.textContent = text; dietMessages.appendChild(d); dietMessages.scrollTop = dietMessages.scrollHeight; }
+  async function sendDietText() { if (!authToken) { showToast("请先登录","error"); return; } var t = dietInput ? dietInput.value.trim() : ""; if (!t) return; dietInput.value = ""; addDietMsg(t, "user"); if (dietTypingEl) dietTypingEl.style.display = "block"; try { var fd = new FormData(); fd.append("content", t); var res = await fetch(API_BASE + "/food/text", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("失败"); var d = await res.json(); addDietMsg(d.reply, "ai"); var dtc = document.getElementById("dietTotalCal"); if (dtc) dtc.textContent = d.calories; await loadDietStats(); } catch(e) { addDietMsg("❌ " + e.message, "ai"); } if (dietTypingEl) dietTypingEl.style.display = "none"; }
+  if (dietSendBtn) dietSendBtn.addEventListener("click", sendDietText);
+  if (dietInput) dietInput.addEventListener("keydown", function(e) { if (e.key === "Enter") sendDietText(); });
+  if (dietPhotoInput) dietPhotoInput.addEventListener("change", async function() { var f = dietPhotoInput.files[0]; if (!f || !authToken) return; addDietMsg("📸 识别中...", "user"); if (dietTypingEl) dietTypingEl.style.display = "block"; try { var fd = new FormData(); fd.append("image", f); var res = await fetch(API_BASE + "/food/photo", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("失败"); var d = await res.json(); addDietMsg(d.reply, "ai"); var dtc = document.getElementById("dietTotalCal"); if (dtc) dtc.textContent = d.calories; await loadDietStats(); } catch(e) { addDietMsg("❌ " + e.message, "ai"); } if (dietTypingEl) dietTypingEl.style.display = "none"; dietPhotoInput.value = ""; });
+  async function loadDietStats() { if (!authToken) return; try { var d = await apiCall("/food/today"); var dtc = document.getElementById("dietTotalCal"); var dc = document.getElementById("dietCount"); if (dtc) dtc.textContent = d.total_calories||0; if (dc) dc.textContent = d.count||0; } catch(e) {} }
+  async function loadDietLogs() { if (!authToken || !dietMessages) return; await loadDietStats(); try { var d = await apiCall("/food/today"); if (d.logs.length > 0 && dietMessages.children.length <= 1) { dietMessages.innerHTML = '<div class="diet-msg ai">👋 我是你的AI营养师！今天已记录了 ' + d.count + ' 次饮食</div>'; d.logs.reverse().forEach(function(l) { addDietMsg(l.content || "📸 拍照识别", "user"); addDietMsg(l.ai_response, "ai"); }); } } catch(e) {} }
+
+  // LOGIN MODAL
+  window._openLogin = function() { var m = document.getElementById("loginModal"); if (m) m.classList.add("active"); };
+  var headerLoginBtn = document.getElementById("headerLoginBtn"); if (headerLoginBtn) headerLoginBtn.addEventListener("click", function() { window._openLogin(); });
+  var closeLogin = document.getElementById("closeLoginModal"); if (closeLogin) closeLogin.addEventListener("click", function() { document.getElementById("loginModal").classList.remove("active"); });
+  var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
+  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 6) { msg.innerText = "请填写邮箱和密码(至少6位)"; return; } msg.innerText = "注册中..."; try { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！赠送3天免费试用","success"); updateMembershipUI(); updateSettingsAuthUI(); } catch(e) { msg.innerText = e.message; } });
+
+  // SCENARIO
+  var scenarioView = document.getElementById("scenarioView"); var selectedScene = "home_student";
+  document.querySelectorAll(".scenario-card").forEach(function(c) { c.addEventListener("click", function() { document.querySelectorAll(".scenario-card").forEach(function(x) { x.classList.remove("active"); }); c.classList.add("active"); selectedScene = c.dataset.scene; }); });
+  var btnCS = document.getElementById("btnConfirmScenario"); if (btnCS) btnCS.addEventListener("click", function() { safeSet3("user_scene", selectedScene); safeSet3("scene_shown", true); scenarioView.style.display = "none"; mainAppView.style.display = "flex"; });
+  var btnSS = document.getElementById("btnSkipScenario"); if (btnSS) btnSS.addEventListener("click", function() { safeSet3("user_scene", null); safeSet3("scene_shown", true); scenarioView.style.display = "none"; mainAppView.style.display = "flex"; });
+
+  // TAB CLICK HOOKS
+  var td = document.querySelector('[data-tab="diet"]'); if (td) td.addEventListener("click", function() { loadDietLogs(); });
+  var tc = document.querySelector('[data-tab="community"]'); if (tc) tc.addEventListener("click", function() { loadCommunityPosts(); });
+  var ta = document.querySelector('[data-tab="achievements"]'); if (ta) ta.addEventListener("click", function() { renderAchievements(); updateLevelUI(); });
+  var tp = document.querySelector('[data-tab="profile"]'); if (tp) tp.addEventListener("click", function() { window._loadProfile(); });
+  var ava = document.getElementById("achViewAll"); if (ava) ava.addEventListener("click", function() { var ta2 = document.querySelector('[data-tab="achievements"]'); if (ta2) ta2.click(); });
+
+  // BOTTOM TABS SYNC
+  document.querySelectorAll(".btab").forEach(function(btn) { btn.addEventListener("click", function() { document.querySelectorAll(".btab").forEach(function(b) { b.classList.remove("active"); }); btn.classList.add("active"); var sb = document.querySelector('.tab-btn[data-tab="' + btn.dataset.tab + '"]'); if (sb) sb.click(); }); });
+  document.querySelectorAll(".tab-btn").forEach(function(btn) { btn.addEventListener("click", function() { document.querySelectorAll(".btab").forEach(function(b) { b.classList.toggle("active", b.dataset.tab === btn.dataset.tab); }); }); });
+
+  // NOTIFICATIONS
+  function updateNotifBadge2() { if (!authToken) return; var nb = document.getElementById("notifBadge"); if (!nb) return; apiCall("/notifications/unread-count").then(function(d) { if (d.count > 0) { nb.style.display = ""; nb.textContent = d.count; } else nb.style.display = "none"; }).catch(function() {}); }
+  var btnRA = document.getElementById("btnReadAll"); if (btnRA) btnRA.addEventListener("click", async function() { try { await apiCall("/notifications/read-all", "POST"); updateNotifBadge2(); } catch(e) {} });
+
+  // INVITE
+  async function loadInviteCode() { if (!authToken) return; try { var d = await apiCall("/referral/code"); var ic = document.getElementById("inviteCodeDisplay"); if (ic) ic.value = d.code; var s = await apiCall("/referral/stats"); gameState.invited = s.invited||0; safeSet3("game_state", gameState); var aic = document.getElementById("achInviteCount"); var air = document.getElementById("achInviteReward"); if (aic) aic.innerHTML = (s.invited||0) + '<br><small>已邀请</small>'; if (air) air.innerHTML = (s.rewarded||0) + '月<br><small>奖励</small>'; } catch(e) {} }
+  var bci = document.getElementById("btnCopyInvite"); if (bci) bci.addEventListener("click", function() { var ic = document.getElementById("inviteCodeDisplay"); if (ic && ic.value) { navigator.clipboard.writeText(ic.value).then(function() { showToast("已复制!","success"); }); } else { showToast("请先登录","error"); } });
+
+  // CHECKIN HOOK: award points
+  if (checkInForm) checkInForm.addEventListener("submit", function() { setTimeout(function() { addPoints(10); updateStreakUI(); renderAchievements(); updateLevelUI(); updateNotifBadge2(); }, 1500); });
+
+  // INIT OVERRIDE
+  var origInitApp3 = initApp;
+  initApp = function() {
+    origInitApp3();
+    setTimeout(function() {
+      updateLevelUI(); renderAchievements(); updateStreakUI();
+      if (authToken) { loadInviteCode(); updateNotifBadge2(); }
+      if (profile && !safeGet3("scene_shown") && !safeGet3("user_scene")) {
+        setTimeout(function() { if (scenarioView) { scenarioView.style.display = ""; mainAppView.style.display = "none"; safeSet3("scene_shown", true); } }, 400);
+      }
+    }, 200);
+  };
 });

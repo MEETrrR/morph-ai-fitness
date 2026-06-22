@@ -121,9 +121,10 @@ RestartSec=5
 WantedBy=multi-user.target
 SERVICE
 
-# Update frontend API base URL
+# Update frontend API base URL and server URL for images
 sed -i "s|http://localhost:8000/api|https://$DOMAIN/api|g" /var/www/morph-ai/app.js
 sed -i "s|http://localhost:8000/api|https://$DOMAIN/api|g" /var/www/morph-ai/ai.js
+sed -i 's|var serverUrl = "http://localhost:8000"|var serverUrl = "https://'"$DOMAIN"'"|g' /var/www/morph-ai/app.js
 
 systemctl daemon-reload
 systemctl enable morph-ai

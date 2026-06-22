@@ -1,4 +1,4 @@
-/* 
+﻿/* 
  * Premium Apple Silver / Titanium Aesthetic Theme
  */
 
@@ -1540,3 +1540,85 @@ header::before {
 
 /* ====== PUSH TOGGLE ====== */
 #pushToggleBtn { color: var(--accent-green); border-color: rgba(52,199,89,0.3); }
+
+/* ====== SCENARIO SELECTOR ====== */
+.scenario-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:0.75rem; width:100%; max-width:480px; margin:0.5rem 0; }
+.scenario-card { border:2px solid var(--panel-border); border-radius:16px; padding:1rem; text-align:center; cursor:pointer; transition:.2s; display:flex; flex-direction:column; align-items:center; gap:0.4rem; background:var(--panel-bg); }
+.scenario-card:hover { border-color:var(--text-secondary); }
+.scenario-card.active { border-color:var(--accent-color); background:var(--accent-glow); }
+.scenario-card strong { font-size:0.85rem; }
+.scenario-card small { font-size:0.7rem; color:var(--text-secondary); }
+
+/* ====== ACHIEVEMENT STAT BADGES ====== */
+.stat-badge { flex:1; min-width:70px; background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:14px; padding:0.75rem; text-align:center; font-size:1.2rem; font-weight:800; color:var(--accent-color); }
+.stat-badge small { display:block; font-size:0.65rem; font-weight:500; color:var(--text-secondary); margin-top:0.2rem; }
+
+/* ====== BADGE GRID ====== */
+.badge-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:0.6rem; }
+.badge-item { text-align:center; padding:0.6rem; border-radius:12px; background:var(--panel-bg); border:1px solid var(--panel-border); transition:.2s; }
+.badge-item.earned { border-color:var(--accent-orange); }
+.badge-item.locked { opacity:0.3; filter:grayscale(1); }
+.badge-item span { font-size:1.5rem; display:block; }
+.badge-item strong { font-size:0.65rem; display:block; margin-top:0.25rem; }
+
+/* ====== LEVEL CARD ====== */
+#levelCard { border:1px solid rgba(10,132,255,0.15); }
+/* ====== ENHANCED BADGES ====== */
+.ach-stats-row { display:flex; gap:0.75rem; margin-bottom:1rem; }
+.ach-stat { flex:1; text-align:center; background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:14px; padding:0.6rem; }
+.ach-stat.big { border-color:rgba(255,149,0,0.3); background:rgba(255,149,0,0.05); }
+.ach-stat-icon { font-size:1.3rem; }
+.ach-stat-num { font-size:1.1rem; font-weight:800; color:var(--accent-color); }
+.ach-stat-label { font-size:0.6rem; color:var(--text-secondary); margin-top:0.15rem; }
+
+.badge-item { text-align:center; padding:0.7rem 0.4rem; border-radius:14px; background:var(--panel-bg); border:1px solid var(--panel-border); transition:.2s; position:relative; overflow:hidden; }
+.badge-item.earned { border-color:var(--accent-orange); background:rgba(255,149,0,0.08); }
+.badge-item.earned::after { content:''; position:absolute; top:-8px;right:-8px;width:20px;height:20px;background:var(--accent-orange);border-radius:50%; }
+.badge-item.locked { opacity:0.5; }
+.badge-item span { font-size:1.8rem; display:block; }
+.badge-item strong { font-size:0.68rem; display:block; margin:0.2rem 0; }
+.badge-item small { font-size:0.6rem; color:var(--text-secondary); }
+.badge-bar { height:3px; background:var(--panel-border); border-radius:2px; margin-top:0.3rem; overflow:hidden; }
+.badge-bar-fill { height:100%; background:var(--accent-color); border-radius:2px; transition:width .5s; }
+/* ====== COMMUNITY ====== */
+.community-cats { display:flex; gap:0.35rem; flex-wrap:wrap; margin-bottom:0.75rem; }
+.ccat { padding:0.35rem 0.7rem; border-radius:16px; border:1px solid var(--panel-border); background:var(--panel-bg); color:var(--text-secondary); font-size:0.72rem; cursor:pointer; white-space:nowrap; transition:.2s; }
+.ccat.active, .ccat:hover { border-color:var(--accent-color); color:var(--accent-color); background:var(--accent-glow); }
+.csort { padding:0.3rem 0.8rem; border-radius:8px; border:1px solid var(--panel-border); background:var(--panel-bg); color:var(--text-secondary); font-size:0.72rem; cursor:pointer; }
+.csort.active { border-color:var(--accent-color); color:var(--accent-color); }
+.community-list { display:flex; flex-direction:column; gap:0.6rem; }
+.community-post { border:1px solid var(--panel-border); border-radius:14px; padding:1rem; background:var(--panel-bg); cursor:pointer; transition:.2s; }
+.community-post:hover { border-color:var(--text-secondary); }
+.community-post .cp-cat { font-size:0.6rem; color:var(--accent-color); font-weight:600; }
+.community-post .cp-title { font-size:0.95rem; font-weight:700; margin:0.3rem 0; }
+.community-post .cp-meta { font-size:0.7rem; color:var(--text-secondary); display:flex;gap:0.75rem; }
+.community-post .cp-image { max-height:200px; border-radius:10px; margin-top:0.5rem; object-fit:cover; width:100%; }
+.community-detail-image { max-height:300px; border-radius:12px; margin:0.75rem 0; object-fit:cover; width:100%; }
+.comment-item { border-bottom:1px solid var(--panel-border); padding:0.5rem 0; font-size:0.85rem; }
+.comment-item .cm-user { font-weight:600; color:var(--accent-color); font-size:0.75rem; }
+.comment-input-row { display:flex; gap:0.5rem; margin-top:1rem; }
+.comment-input-row input { flex:1; }
+/* ====== PROFILE ====== */
+.profile-stat-box { text-align:center; background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:12px; padding:0.6rem 0.3rem; }
+.profile-stat-box strong { display:block; font-size:1.1rem; color:var(--accent-color); }
+.profile-stat-box small { font-size:0.65rem; color:var(--text-secondary); }
+.notif-badge { background:var(--accent-red); color:white; font-size:0.55rem; padding:0.1rem 0.35rem; border-radius:8px; margin-left:0.2rem; vertical-align:top; }
+.btn-sm { padding:0.3rem 0.6rem !important; font-size:0.7rem !important; }
+/* ====== HEADER LOGIN BTN ====== */
+.btn-header-login { padding:0.45rem 0.9rem; border-radius:12px; border:1px solid var(--accent-color); background:var(--accent-glow); color:var(--accent-color); font-size:0.75rem; font-weight:600; cursor:pointer; transition:.2s; }
+.btn-header-login:hover { background:var(--accent-color); color:white; }
+/* ====== BEAUTIFUL LOGIN ====== */
+.btn-header-login {
+  padding:0.45rem 1rem; border-radius:20px; border:none;
+  background:linear-gradient(135deg,#0a84ff,#30d158);
+  color:white; font-size:0.75rem; font-weight:700; cursor:pointer;
+  transition:.3s; box-shadow:0 2px 12px rgba(10,132,255,0.3);
+}
+.btn-header-login:hover { transform:translateY(-1px); box-shadow:0 4px 20px rgba(10,132,255,0.5); }
+.login-glow { animation:loginPulse 2s ease-in-out infinite; }
+@keyframes loginPulse { 0%,100%{box-shadow:0 2px 12px rgba(10,132,255,0.3)} 50%{box-shadow:0 2px 24px rgba(10,132,255,0.6)} }
+
+/* ====== SIDEBAR BADGE PREVIEW ====== */
+#achPreviewCard .badge-item { padding:0.2rem; border-radius:8px; border:1px solid var(--panel-border); text-align:center; }
+#achPreviewCard .badge-item.earned { border-color:var(--accent-orange); background:rgba(255,149,0,0.06); }
+/* ====== DIET CHAT ====== */.diet-msg { max-width:80%; padding:0.6rem 0.9rem; border-radius:14px; font-size:0.85rem; line-height:1.5; word-break:break-word; }.diet-msg.user { align-self:flex-end; background:var(--accent-glow); color:var(--text-primary); }.diet-msg.ai { align-self:flex-start; background:var(--panel-bg); border:1px solid var(--panel-border); color:var(--text-primary); }
