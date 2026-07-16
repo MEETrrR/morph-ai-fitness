@@ -49,12 +49,13 @@ def filter_content(text: str) -> tuple:
     return sanitize(text, 500), False
 
 app = FastAPI(title="Morph.AI API")
-app.add_middleware(CORSMiddleware, allow_origins=[FRONTEND_ORIGIN], allow_methods=["*"], allow_headers=["*"], allow_credentials=True)
+app.add_middleware(CORSMiddleware, allow_origins=[FRONTEND_ORIGIN], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], allow_credentials=True)
 
 security = HTTPBearer()
 
 # --- Rate limiting ---
 _rate_limits = defaultdict(list)
+_auth_rate_limits = defaultdict(list)
 
 def check_rate_limit(user_id: int, limit: int = AI_DAILY_LIMIT):
     now = time.time()
@@ -65,11 +66,29 @@ def check_rate_limit(user_id: int, limit: int = AI_DAILY_LIMIT):
         raise HTTPException(status_code=429, detail=f"今日AI审计次数已达上限({limit}次/天)，请明天再来")
     _rate_limits[key].append(now)
 
-# --- Password Helpers (PBKDF2 + salt) ---
+def check_auth_rate_limit(request: Request, action: str, max_attempts: int = 10):
+    now = time.time()
+    ip = request.client.host if request.client else "unknown"
+    window = 300
+    key = f"{ip}:{action}"
+    _auth_rate_limits[key] = [t for t in _auth_rate_limits[key] if now - t < window]
+    if len(_auth_rate_limits[key]) >= max_attempts:
+        raise HTTPException(status_code=429, detail="请求过于频繁，请5分钟后再试")
+    _auth_rate_limits[key].append(now)
+
+# --- Password Helpers (PBKDF2 + salt, OWASP 2023 recommended) ---
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
-    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 600_000)
     return f"pbkdf2:{salt}:{h.hex()}"
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, salt, stored_hash = stored.split(":")
+        h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 600_000)
+        return hmac.compare_digest(stored_hash.encode(), h.hex().encode())
+    except (ValueError, AttributeError):
+        return False
 
 async def create_user_profile(db, user_id: int):
     await db.execute("INSERT OR IGNORE INTO user_profiles (user_id, nickname) VALUES (?, ?)", (user_id, f"用户{user_id}"))
@@ -77,14 +96,6 @@ async def create_user_profile(db, user_id: int):
 async def add_notification(db, user_id: int, from_user_id: int, ntype: str, post_id: int = None, content: str = ""):
     await db.execute("INSERT INTO notifications (user_id, from_user_id, type, post_id, content) VALUES (?, ?, ?, ?, ?)", (user_id, from_user_id, ntype, post_id, content))
     await db.commit()
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        _, salt, h = stored.split(":")
-        h2 = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
-        return hmac.compare_digest(h, h2.hex())
-    except Exception:
-        return False
 
 def sanitize(text: str, max_len: int = 200) -> str:
     """Sanitize user input: strip HTML, limit length, escape for safety."""
@@ -120,6 +131,16 @@ class CheckInData(BaseModel):
     tonightExercise: Optional[str] = None
     exerciseFeedback: Optional[str] = None
     ultimateGoal: Optional[str] = None
+    # Profile context for AI personalization
+    profileGender: Optional[str] = None
+    profileAge: Optional[int] = None
+    profileHeight: Optional[float] = None
+    profileWeight: Optional[float] = None
+    profileTargetWeight: Optional[float] = None
+    profileGoal: Optional[str] = None
+    profileIllnesses: Optional[str] = None
+    profileDeadline: Optional[str] = None
+    recentHistory: Optional[str] = None
 
     @field_validator('currentWeight')
     @classmethod
@@ -141,7 +162,8 @@ async def get_db():
     await db.execute("""
         CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL,
         phone TEXT DEFAULT '', password_hash TEXT NOT NULL, is_trial INTEGER DEFAULT 1, trial_ends_at TEXT,
-        membership_expires_at TEXT, created_at TEXT DEFAULT (datetime('now')))
+        membership_expires_at TEXT, reset_token TEXT DEFAULT '', reset_token_expires TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')))
     """)
     await db.execute("""
         CREATE TABLE IF NOT EXISTS checkins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
@@ -223,10 +245,13 @@ def create_token(user_id: int, email: str) -> str:
 def decode_token(token: str) -> dict:
     parts = token.split(".")
     if len(parts) != 3: raise ValueError("invalid token")
-    header, payload, sig = parts
-    expected = _b64_encode(hmac.new(SECRET_KEY, f"{header}.{payload}".encode(), hashlib.sha256).digest())
+    header_b64, payload_b64, sig = parts
+    header_data = json.loads(_b64_decode(header_b64))
+    if header_data.get("alg") != "HS256":
+        raise ValueError("unsupported algorithm")
+    expected = _b64_encode(hmac.new(SECRET_KEY, f"{header_b64}.{payload_b64}".encode(), hashlib.sha256).digest())
     if not hmac.compare_digest(sig, expected): raise ValueError("invalid signature")
-    data = json.loads(_b64_decode(payload))
+    data = json.loads(_b64_decode(payload_b64))
     if data.get("exp", 0) < time.time(): raise ValueError("token expired")
     return data
 
@@ -254,10 +279,17 @@ async def health():
     return {"status": "ok"}
 
 @app.post("/api/auth/register")
-async def register(body: RegisterRequest):
+async def register(body: RegisterRequest, request: Request):
+    check_auth_rate_limit(request, "register", 5)
     email = validate_email(body.email)
-    if len(body.password) < 6: raise HTTPException(status_code=400, detail="密码至少6位")
-    if len(body.password) > 128: raise HTTPException(status_code=400, detail="密码过长")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少8位")
+    if len(body.password) > 128:
+        raise HTTPException(status_code=400, detail="密码过长")
+    if not re.search(r"[A-Z]", body.password) or not re.search(r"[a-z]", body.password):
+        raise HTTPException(status_code=400, detail="密码需包含大小写字母")
+    if not re.search(r"\d", body.password):
+        raise HTTPException(status_code=400, detail="密码需包含数字")
     db = await get_db()
     existing = await db.execute("SELECT id FROM users WHERE email = ?", (email,))
     if await existing.fetchone(): raise HTTPException(status_code=400, detail="该邮箱已注册")
@@ -271,7 +303,8 @@ async def register(body: RegisterRequest):
     return {"access_token": token, "token_type": "bearer", "user": {"id": user_id, "email": email, "is_trial": True, "trial_ends_at": trial_ends, "membership_expires_at": None}}
 
 @app.post("/api/auth/login")
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, request: Request):
+    check_auth_rate_limit(request, "login", 10)
     identity = body.email.lower().strip()
     is_phone = bool(__import__("re").match(r"^\+?\d{6,15}$", identity))
     db = await get_db()
@@ -280,10 +313,8 @@ async def login(body: LoginRequest):
             user = await cursor.fetchone()
     else:
         email = validate_email(identity) if "@" in identity else identity
-        async with db.execute("SELECT * FROM users WHERE email = ? OR phone = ?", (email, identity)) as cursor:
+        async with db.execute("SELECT * FROM users WHERE email = ?", (email,)) as cursor:
             user = await cursor.fetchone()
-    async with db.execute("SELECT * FROM users WHERE email = ?", (email,)) as cursor:
-        user = await cursor.fetchone()
     if not user or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="邮箱或密码错误")
     user_dict = dict(user)
@@ -291,20 +322,45 @@ async def login(body: LoginRequest):
     return {"access_token": token, "token_type": "bearer", "user": {"id": user_dict["id"], "email": user_dict["email"], "is_trial": bool(user_dict["is_trial"]), "trial_ends_at": user_dict["trial_ends_at"], "membership_expires_at": user_dict["membership_expires_at"]}}
 
 @app.post("/api/auth/reset-password")
-async def reset_password(body: LoginRequest):
-    """Send password reset email (simplified: returns new random password)"""
+async def reset_password(body: LoginRequest, request: Request):
+    """Generate a time-limited reset token. Returns token for MVP; should email it in production."""
+    check_auth_rate_limit(request, "reset", 3)
     email = validate_email(body.email)
     db = await get_db()
     async with db.execute("SELECT * FROM users WHERE email = ?", (email,)) as cursor:
         user = await cursor.fetchone()
+    # Always return same message to prevent email enumeration
     if not user:
-        return {"message": "如果该邮箱已注册，重置邮件已发送"}
-    new_password = secrets.token_hex(6)
-    new_hash = hash_password(new_password)
-    await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
+        return {"message": "如果该邮箱已注册，24小时内将收到重置链接"}
+    # MVP: generate token and return directly. PRODUCTION: send via email.
+    reset_token = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    await db.execute("UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?",
+                     (reset_token, expires, user["id"]))
     await db.commit()
-    # In production: send email via SMTP. For MVP, return the new password directly.
-    return {"message": "密码已重置", "new_password": new_password}
+    reset_link = f"{FRONTEND_ORIGIN}/reset-password?token={reset_token}"
+    return {"message": "如果该邮箱已注册，24小时内将收到重置链接", "reset_link": reset_link}
+
+class ResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str
+
+@app.post("/api/auth/reset-password/confirm")
+async def reset_password_confirm(body: ResetConfirmRequest, request: Request):
+    check_auth_rate_limit(request, "reset_confirm", 5)
+    if len(body.new_password) < 8 or len(body.new_password) > 128:
+        raise HTTPException(status_code=400, detail="密码至少8位")
+    db = await get_db()
+    async with db.execute("SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > ?",
+                          (body.token, datetime.now(timezone.utc).isoformat())) as cursor:
+        user = await cursor.fetchone()
+    if not user:
+        raise HTTPException(status_code=400, detail="重置链接无效或已过期")
+    new_hash = hash_password(body.new_password)
+    await db.execute("UPDATE users SET password_hash = ?, reset_token = '', reset_token_expires = '' WHERE id = ?",
+                     (new_hash, user["id"]))
+    await db.commit()
+    return {"message": "密码已成功重置"}
 
 @app.delete("/api/auth/delete-account")
 async def delete_account(user: dict = Depends(get_current_user)):
@@ -321,32 +377,82 @@ async def ai_audit(body: CheckInData, user: dict = Depends(get_current_user)):
     if not DEEPSEEK_API_KEY: raise HTTPException(status_code=503, detail="AI服务暂未配置")
     check_rate_limit(user["id"])
 
-    # Sanitize all user inputs before building prompt
+    # Sanitize all user inputs
     safe = {
         "w": body.currentWeight or 0,
         "wc": sanitize(body.weightCondition or "", 30),
         "st": sanitize(body.stateDescription or "", 100),
+        "bf": sanitize(body.breakfast or "", 100),
         "lu": sanitize(body.lunch or "", 100),
         "di": sanitize(body.dinner or "", 100),
         "ex": sanitize(body.tonightExercise or "", 100),
         "fb": sanitize(body.exerciseFeedback or "", 100),
         "gl": sanitize(body.ultimateGoal or "", 100),
+        "gender": sanitize(body.profileGender or "male", 10),
+        "age": body.profileAge or 25,
+        "height": body.profileHeight or 170,
+        "iWeight": body.profileWeight or 70,
+        "tWeight": body.profileTargetWeight or 65,
+        "goal": sanitize(body.profileGoal or "fat_loss", 20),
+        "illness": sanitize(body.profileIllnesses or "无", 80),
+        "deadline": sanitize(body.profileDeadline or "", 30),
+        "history": sanitize(body.recentHistory or "暂无历史数据", 2000),
     }
 
+    goalText = "减脂" if safe["goal"] == "fat_loss" else "增肌"
+
     prompt = (
-        "你是硬核AI健身教练。用户今日打卡数据：\n"
+        f"## 用户档案\n"
+        f"- 性别: {safe['gender']} | 年龄: {safe['age']}岁 | 身高: {safe['height']}cm\n"
+        f"- 初始体重: {safe['iWeight']}kg | 目标体重: {safe['tWeight']}kg | 核心目标: {goalText}\n"
+        f"- 伤病情况: {safe['illness']} | 目标截止日: {safe['deadline'] or '长期战役'}\n\n"
+        f"## 今日打卡数据\n"
         f"- 当前体重: {safe['w']} kg ({safe['wc']})\n"
-        f"- 状态: {safe['st']}\n"
-        f"- 中午吃了: {safe['lu']}\n"
-        f"- 晚上吃了: {safe['di']}\n"
+        f"- 状态描述: {safe['st']}\n"
+        f"- 早餐: {safe['bf']}\n"
+        f"- 午餐: {safe['lu']}\n"
+        f"- 晚餐: {safe['di']}\n"
         f"- 今日运动: {safe['ex']}\n"
         f"- 身体反馈: {safe['fb']}\n"
-        f"- 终极目标: {safe['gl']}\n\n"
-        "请按以下四个模块输出硬核审计报告(Markdown格式)：\n\n"
-        "## 🚀 模块一：大盘审计与硬核震慑\n"
-        "## 🛠️ 模块二：干饭代码一键修复\n"
-        "## 🏀 模块三：运动与训练性能包注入\n"
-        "## 🚨 模块四：今日教练收盘指令"
+        f"- 终极目标 Flag: {safe['gl']}\n\n"
+        f"## 历史记录(最近)\n{safe['history']}\n\n"
+        "请以全球顶级营养师兼体能教练的身份，基于以上数据输出审计报告。\n\n"
+        "报告要求(Markdown格式)：\n\n"
+        "## 📊 综合评估\n"
+        "- 基于 Mifflin-St Jeor 公式估算用户BMR和TDEE\n"
+        "- 对体重变化进行科学解读（区分水分波动 vs 真实减脂增肌）\n"
+        "- 如果用户设定了截止日期，评估其可行性。日均减重超过0.15kg/天需警告风险\n\n"
+        "## 🍳 饮食审计\n"
+        "- 逐餐分析营养结构（蛋白/碳水/脂肪比例）\n"
+        "- 对不健康食物标注具体的热量和营养成分问题\n"
+        "- 给出下餐/明天的具体饮食调整建议（精确到食物和份量g）\n\n"
+        "## 🏋️ 训练分析\n"
+        "- 评估今日训练强度、类型和质量\n"
+        "- 如果用户报告疼痛/受伤(伤/疼/剧痛)，必须建议停止相关训练并推荐就医\n"
+        "- 如果报告酸痛/疲劳，推荐主动恢复方案\n"
+        "- 根据目标(减脂/增肌)推荐明天的训练方向\n\n"
+        "## 📋 明天计划\n"
+        "- 明日热量目标(kcal)和三大宏量营养素分配(g)\n"
+        "- 具体的训练建议(动作名称、组数、次数)\n"
+        "- 一个可执行的行动清单\n\n"
+        "## ⚠️ 注意事项\n"
+        "- 如用户报告伤痛，在此重申安全第一原则\n\n"
+        "规则：\n"
+        "1. 所有数值必须科学计算，展示推导过程\n"
+        "2. 绝不推荐极端饮食(<1200kcal女/<1500kcal男)\n"
+        "3. 不涉及医疗诊断，发现严重问题建议就医\n"
+        "4. 语气专业但充满鼓励，不指责用户的执行偏差\n"
+        "5. 给出的建议必须具体可执行，不说空话"
+    )
+
+    system_prompt = (
+        "你是全球顶级营养师兼体能教练，拥有20年服务职业运动员的经验。"
+        "你精通运动营养学(Mifflin-St Jeor公式、宏量营养素分配)、功能性训练(周期化设计、RPE/RIR)、生物力学和行为心理学。"
+        "你的训练哲学是科学量化、动态调整、可持续执行。"
+        "你绝不推荐极端饮食，所有建议基于精确计算和科学依据。"
+        "你对用户的伤病信号高度敏感，会优先保护用户安全。"
+        "你的回复必须包含具体数值、食物份量(g)和动作要领，不能空泛。"
+        "语气: 专业、精确、坚定但温暖。就像一位关心你但不会对你撒谎的教练。"
     )
 
     try:
@@ -354,7 +460,7 @@ async def ai_audit(body: CheckInData, user: dict = Depends(get_current_user)):
             resp = await client.post(
                 "https://api.deepseek.com/chat/completions",
                 headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "deepseek-chat", "messages": [{"role": "system", "content": "专业健身教练，语气热血专业。"}, {"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 2048}
+                json={"model": "deepseek-chat", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 3072}
             )
             if resp.status_code != 200:
                 raise HTTPException(status_code=502, detail=f"AI服务异常: {resp.status_code}")
@@ -660,9 +766,15 @@ async def read_all(user: dict = Depends(get_current_user)):
     return {"message": "ok"}
 @app.get("/api/uploads/{filename}")
 async def serve_upload(filename: str):
-    path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(path): raise HTTPException(status_code=404)
-    return FileResponse(path)
+    import re
+    if not re.match(r'^[\w.\-]+$', filename):
+        raise HTTPException(status_code=400, detail="非法文件名")
+    resolved = os.path.realpath(os.path.join(UPLOAD_DIR, filename))
+    if not resolved.startswith(os.path.realpath(UPLOAD_DIR) + os.sep):
+        raise HTTPException(status_code=404)
+    if not os.path.isfile(resolved):
+        raise HTTPException(status_code=404)
+    return FileResponse(resolved)
 
 # --- Diet Assistant (Real-time Food Log) ---
 @app.post("/api/food/text")

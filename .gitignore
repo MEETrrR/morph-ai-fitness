@@ -26,3 +26,7 @@ app-v3.js
 reset.html
 cleansw.html
 full.html
+
+# Temp/reset files
+reset-local.html
+.superpowers/

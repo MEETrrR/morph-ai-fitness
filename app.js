@@ -146,37 +146,57 @@ document.addEventListener('DOMContentLoaded', () => {
   const actionsGrid = document.getElementById('actionsGrid');
   const actionsSubtabs = document.getElementById('actionsSubtabs');
 
+  // Task list elements
+  const taskDate = document.getElementById('taskDate');
+  const taskStreak = document.getElementById('taskStreak');
+  const taskProgressFill = document.getElementById('taskProgressFill');
+  const taskProgressPct = document.getElementById('taskProgressPct');
+  const taskProgressNum = document.getElementById('taskProgressNum');
+  const taskGroups = document.getElementById('taskGroups');
+  const taskNotes = document.getElementById('taskNotes');
+  const btnTaskSubmit = document.getElementById('btnTaskSubmit');
+
   // --- INITIALIZATION ---
   initApp();
 
   function initApp() {
     var ls = document.getElementById('loadingScreen');
-    document.documentElement.setAttribute('data-theme', safeGet('ai_fitness_theme') || 'light');
+    themeToggle.style.display = 'none';
     updateMembershipUI();
     if (profile && onboardingView && mainAppView) {
       if (ls) { ls.style.display = 'none'; }
-      // Remove the empty container and footer that push content down
       var ctn = document.querySelector('.container'); if (ctn && ctn.parentNode) ctn.parentNode.removeChild(ctn);
       var ftr = document.querySelector('footer'); if (ftr && ftr.parentNode) ftr.parentNode.removeChild(ftr);
-      // Move mainApp to body top and center
       document.body.appendChild(mainAppView);
       document.body.style.cssText = 'margin:0;padding:0;';
-      mainAppView.style.cssText = 'display:flex;flex-direction:column;gap:2rem;max-width:1100px;width:100%;margin:0 auto;padding:2.5rem 1.5rem;min-height:100vh;box-sizing:border-box;';
+      mainAppView.style.cssText = 'display:flex;flex-direction:column;gap:1.25rem;max-width:720px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 5rem;min-height:100vh;box-sizing:border-box;';
       setupSidebar();
       generateDynamicPlan();
+      renderTaskList();
       renderHistoryList();
-      // Welcome guide
       if (!safeGet('guide_done')) { setTimeout(function() { startGuide(); }, 800); }
       var lastWeight = history.length > 0 ? history[0].weight : profile.weight;
       if (ciWeight) ciWeight.value = lastWeight;
       var deadlineStr = profile.deadlineDate ? ('在 ' + profile.deadlineDate + ' 前') : '';
       var goalName = profile.goal === 'fat_loss' ? '减脂' : '增肌';
       if (ciGoalFlag) ciGoalFlag.value = deadlineStr + '杀到 ' + profile.targetWeight + ' kg | 强化' + goalName + '目标';
+      updateStatusBar();
     } else if (onboardingView && mainAppView) {
       if (ls) ls.style.display = 'none';
       onboardingView.style.display = '';
       mainAppView.style.display = 'none';
       updateWizard();
+    }
+  }
+
+  function updateStatusBar() {
+    if (!profile) return;
+    var ptw = document.getElementById('pillWeight');
+    if (ptw && profile.weight) ptw.textContent = profile.weight + ' kg';
+    var dl = document.getElementById('deadlineDays');
+    if (dl && profile.deadlineDate) {
+      var rem = Math.ceil((new Date(profile.deadlineDate) - new Date()) / 86400000);
+      dl.textContent = Math.max(0, rem) + ' 天';
     }
   }
 
@@ -190,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
         memberStatusLabel.innerText = '👑 付费会员';
         const days = Math.ceil((expired - now) / 86400000);
         memberExpireText.innerText = `剩余 ${days} 天`;
-        membershipCard.style.border = '1px solid rgba(255,149,0,0.4)';
+        membershipCard.style.border = '1px solid rgba(255,140,66,0.35)';
       } else {
         memberStatusLabel.innerText = '免费试用';
         memberExpireText.innerText = currentUser.is_trial ? '试用已过期，请升级' : '请升级会员';
@@ -589,6 +609,186 @@ document.addEventListener('DOMContentLoaded', () => {
     deadlineProgressFill.style.width = `${progress}%`;
   }
 
+  // ======== TASK LIST: 自律打卡 ========
+  function getTodayKey() {
+    return 'taskPlan_' + new Date().toLocaleDateString('zh-CN');
+  }
+
+  function generateDailyTasks() {
+    if (!profile) return null;
+    var todayKey = getTodayKey();
+    var saved = safeGet(todayKey);
+    if (saved && saved.tasks) return saved;
+    
+    // Calculate BMR/TDEE for science-backed details
+    var isMale = profile.gender === 'male';
+    var bmr = 10 * profile.weight + 6.25 * profile.height - 5 * profile.age;
+    bmr += isMale ? 5 : -161;
+    var tdee = Math.round(bmr * 1.375);
+    var isFatLoss = profile.goal === 'fat_loss';
+    var targetCal = isFatLoss ? Math.round(tdee - 400) : Math.round(tdee + 300);
+    var bmrInfo = 'BMR ' + Math.round(bmr) + ' kcal | TDEE ' + tdee + ' kcal | 目标 ' + targetCal + ' kcal';
+    
+    var tasks = [];
+    var id = 0;
+
+    tasks.push({ id:'t'+(++id), category:'body', title:'晨起空腹称重', completed:false, detail:bmrInfo });
+
+    if (isFatLoss) {
+      tasks.push({ id:'t'+(++id), category:'diet', title:'早餐: 高蛋白+慢碳', completed:false, detail:'水煮蛋2个+燕麦50g+黑咖啡 | ~380 kcal' });
+      tasks.push({ id:'t'+(++id), category:'diet', title:'午餐: 控碳水', completed:false, detail:'鸡胸肉150g+糙米饭100g+蔬菜 | ~520 kcal' });
+      tasks.push({ id:'t'+(++id), category:'diet', title:'晚餐: 清空碳水', completed:false, detail:'鱼肉200g+绿叶菜不限量 | ~350 kcal' });
+      tasks.push({ id:'t'+(++id), category:'diet', title:'全天 0 含糖饮料', completed:false, detail:'只喝水/黑咖啡/茶 | 日热量约 ' + targetCal + ' kcal' });
+      tasks.push({ id:'t'+(++id), category:'exercise', title:'有氧训练 30 分钟', completed:false, detail:'跑步/单车/跳绳 | 心率130-150 bpm' });
+      tasks.push({ id:'t'+(++id), category:'exercise', title:'核心训练 4 组', completed:false, detail:'卷腹20次+平板支撑60秒 | 组休45秒' });
+      tasks.push({ id:'t'+(++id), category:'exercise', title:'拉伸放松 10 分钟', completed:false, detail:'动态拉伸+泡沫轴 | 重点髋/膝/踝' });
+    } else {
+      tasks.push({ id:'t'+(++id), category:'diet', title:'早餐: 足量碳水+蛋白', completed:false, detail:'全麦面包2片+鸡蛋3个+牛奶 | ~550 kcal' });
+      tasks.push({ id:'t'+(++id), category:'diet', title:'午餐: 高蛋白+碳水', completed:false, detail:'米饭200g+牛肉150g+蔬菜 | ~700 kcal' });
+      tasks.push({ id:'t'+(++id), category:'diet', title:'晚餐: 碳水+蛋白', completed:false, detail:'红薯150g+鸡胸200g+蔬菜 | ~550 kcal' });
+      tasks.push({ id:'t'+(++id), category:'diet', title:'训练后蛋白补充', completed:false, detail:'乳清蛋白30g+香蕉 | 日热量约 ' + targetCal + ' kcal' });
+      tasks.push({ id:'t'+(++id), category:'exercise', title:'力量训练', completed:false, detail:'深蹲/卧推/硬拉 各4组 | RPE 7-8' });
+      tasks.push({ id:'t'+(++id), category:'exercise', title:'核心训练 4 组', completed:false, detail:'悬垂提膝15次+交替单车20次 | 组休60秒' });
+      tasks.push({ id:'t'+(++id), category:'exercise', title:'拉伸放松 15 分钟', completed:false, detail:'训练后静态拉伸+泡沫轴 | 保证关节活动度' });
+    }
+    
+    tasks.push({ id:'t'+(++id), category:'lifestyle', title:'23:00 前熄灯睡觉', completed:false, detail:'保证7-8小时睡眠 | 生长激素分泌高峰' });
+    tasks.push({ id:'t'+(++id), category:'lifestyle', title:'全天饮水 3L+', completed:false, detail:'加速代谢 | 建议分8-10次饮用' });
+    
+    var plan = { generated: Date.now(), tasks: tasks, notes: '' };
+    safeSet(todayKey, plan);
+    return plan;
+  }
+
+  function renderTaskList() {
+    if (!taskGroups || !taskDate || !taskStreak) return;
+    var plan = generateDailyTasks();
+    if (!plan) { taskGroups.innerHTML = '<div class="task-empty">请先完成身体数据配置</div>'; return; }
+    
+    taskDate.textContent = new Date().toLocaleDateString('zh-CN', { month:'long', day:'numeric', weekday:'short' });
+    var s = calcStreak();
+    taskStreak.innerHTML = '&#x1F525; ' + s.current + ' 天';
+    
+    var catLabels = { body:'💧 身体', diet:'🍳 饮食', exercise:'🏃 运动', lifestyle:'🌙 作息' };
+    var groups = {};
+    plan.tasks.forEach(function(t) {
+      if (!groups[t.category]) groups[t.category] = [];
+      groups[t.category].push(t);
+    });
+    
+    var html = '';
+    ['body','diet','exercise','lifestyle'].forEach(function(cat) {
+      if (!groups[cat]) return;
+      html += '<div class="task-group"><div class="task-group-title">' + catLabels[cat] + '</div>';
+      groups[cat].forEach(function(t) {
+        var cls = t.completed ? ' task-item completed' : ' task-item';
+        var detailHtml = t.detail ? '<div class="task-item-detail">' + sanitizeHTML(t.detail) + '</div>' : '';
+        html += '<div class="' + cls + '" data-task-id="' + t.id + '" onclick="window._toggleTask(\'' + t.id + '\')">' +
+          '<div class="task-check"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>' +
+          '<div class="task-item-body"><div class="task-item-title">' + sanitizeHTML(t.title) + '</div>' + detailHtml + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    });
+    taskGroups.innerHTML = html;
+    
+    if (taskNotes && plan.notes) taskNotes.value = plan.notes;
+    updateTaskProgress();
+  }
+
+  window._toggleTask = function(taskId) {
+    var todayKey = getTodayKey();
+    var plan = safeGet(todayKey);
+    if (!plan) return;
+    plan.tasks.forEach(function(t) {
+      if (t.id === taskId) t.completed = !t.completed;
+    });
+    safeSet(todayKey, plan);
+    renderTaskList();
+  };
+
+  function updateTaskProgress() {
+    if (!taskProgressFill || !taskProgressPct || !taskProgressNum) return;
+    var plan = safeGet(getTodayKey());
+    if (!plan || !plan.tasks.length) return;
+    var total = plan.tasks.length;
+    var done = plan.tasks.filter(function(t) { return t.completed; }).length;
+    var pct = Math.round((done / total) * 100);
+
+    taskProgressFill.style.width = pct + '%';
+    taskProgressFill.className = 'task-progress-fill' + (pct >= 67 ? ' high' : pct >= 34 ? ' mid' : '');
+    taskProgressPct.textContent = pct + '%';
+    taskProgressNum.textContent = done + '/' + total;
+
+    // Motivational motto
+    var mottoEl = document.getElementById('taskMotto');
+    var motto = getMotto(done, total, pct);
+    if (mottoEl) mottoEl.textContent = motto;
+
+    // Milestone toasts (only once per milestone)
+    if (!plan._milestones) plan._milestones = {};
+    var milestones = [25, 50, 75, 100];
+    milestones.forEach(function(m) {
+      if (pct >= m && !plan._milestones[m]) {
+        plan._milestones[m] = true;
+        safeSet(getTodayKey(), plan);
+        var msgs = {
+          25: '🚀 四分之一！渐入佳境',
+          50: '🎯 过半！你比昨天更强',
+          75: '⚡ 冲刺！就剩最后几步',
+          100: '🏆 全部完成！今天你赢麻了'
+        };
+        showToast(msgs[m], 'success');
+      }
+    });
+  }
+
+  function getMotto(done, total, pct) {
+    if (pct === 0) return '新的一天，从第一个任务开始 💪';
+    if (pct <= 20) return '好的开始！坚持下去 ⚡';
+    if (pct <= 40) return '你正在变强，一步一个脚印 👣';
+    if (pct <= 55) return '过半了！你比昨天更接近目标 🎯';
+    if (pct <= 70) return '继续保持，今天属于你 🔥';
+    if (pct <= 85) return '冲刺阶段，不要停下来 🚀';
+    if (pct < 100) return '最后一公里，全力以赴 💥';
+    return '全部完成！你就是今天的冠军 🏆';
+  }
+
+  btnTaskSubmit.addEventListener('click', function() {
+    if (!profile) { showToast('请先完成身体数据配置', 'error'); return; }
+    var plan = safeGet(getTodayKey());
+    if (!plan) return;
+    
+    // Save notes
+    if (taskNotes) { plan.notes = taskNotes.value.trim(); safeSet(getTodayKey(), plan); }
+    
+    var total = plan.tasks.length;
+    var done = plan.tasks.filter(function(t) { return t.completed; }).length;
+    var pct = Math.round((done / total) * 100);
+    var incomplete = plan.tasks.filter(function(t) { return !t.completed; }).map(function(t) { return t.title; }).join('、');
+    
+    // Switch to check-in tab and pre-fill
+    var tabBtnsAll = document.querySelectorAll('.tab-btn');
+    tabBtnsAll.forEach(function(b) { b.classList.remove('active'); });
+    var checkinTab = document.querySelector('.tab-btn[data-tab="checkin"]');
+    if (checkinTab) checkinTab.classList.add('active');
+    
+    var allPanels = document.querySelectorAll('.tab-panel');
+    allPanels.forEach(function(p) { p.classList.remove('active'); });
+    var checkinPanel = document.getElementById('panelCheckin');
+    if (checkinPanel) checkinPanel.classList.add('active');
+    
+    // Pre-fill form
+    var summary = '✅ 已完成 ' + done + '/' + total + ' (' + pct + '%)';
+    if (incomplete) summary += ' | ❌ 未完成: ' + incomplete;
+    if (plan.notes) summary += ' | 📝 ' + plan.notes;
+    
+    if (ciState && ciState.value === '') ciState.value = summary;
+    if (ciExercise) ciExercise.value = summary;
+    
+    showToast('已跳转到打卡页，请补充具体数据后提交', 'info');
+  });
+
   // --- DYNAMIC PLAN GENERATOR (基于用户最后打卡反馈实时生成) ---
   function generateDynamicPlan() {
     if (!profile) return;
@@ -625,6 +825,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const carbTarget = isFatLoss ? Math.round(currentWeight * 1.6) : Math.round(currentWeight * 4.5);
     const fatTarget = Math.round((targetCalories - (proteinTarget * 4) - (carbTarget * 4)) / 9);
 
+    // Safety guards
+    var safetyWarnings = [];
+    const calFloor = isMale ? 1500 : 1200;
+    var safeCalories = targetCalories;
+    var safeFat = fatTarget;
+    var safeCarb = carbTarget;
+    
+    if (targetCalories < calFloor) {
+      safetyWarnings.push('热量目标(' + targetCalories + ' kcal)低于安全底线(' + calFloor + ' kcal)，已自动调整。过低热量会导致代谢损伤、肌肉流失和激素紊乱。');
+      safeCalories = calFloor;
+    }
+    if (proteinTarget > currentWeight * 3.5) {
+      safetyWarnings.push('蛋白目标偏高(' + proteinTarget + 'g)，超过 3.5g/kg 可能增加肾脏负担，建议控制在 ' + Math.round(currentWeight * 3) + 'g 以内。');
+    }
+    if (safeFat < 0) {
+      safeFat = Math.round(safeCalories * 0.2 / 9);
+      safetyWarnings.push('脂肪目标计算异常，已自动调整为安全值。请确认碳水或蛋白摄入未过高。');
+    }
+    if (safeCarb < 0) {
+      safeCarb = Math.round(safeCalories * 0.3 / 4);
+      safetyWarnings.push('碳水目标计算异常，已自动调整为安全值。请确认蛋白摄入未过高。');
+    }
+
     let feedbackNote = '';
     if (latestCheckIn) {
       const fb = latestCheckIn.exerciseFeedback || '';
@@ -642,14 +865,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isFatLoss) {
       dietSection = `
         <div style="margin-bottom: 1.25rem;">
-          <h4 style="color: var(--accent-color); margin-bottom: 0.5rem;">🔥 今日燃脂能量底座：${targetCalories} kcal</h4>
+          <h4 style="color: var(--accent-color); margin-bottom: 0.5rem;">🔥 今日燃脂能量底座：${safeCalories} kcal</h4>
           <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${feedbackNote}</p>
           <ul style="padding-left: 1.25rem; font-size: 0.9rem;">
             <li><strong>蛋白质 (高配)</strong>：约 ${proteinTarget}g / 天（鸡胸肉、牛里脊、鸡蛋、乳清蛋白）</li>
-            <li><strong>碳水化合物 (控量)</strong>：约 ${carbTarget}g / 天（慢碳：燕麦、糙米、红薯）</li>
-            <li><strong>脂肪 (优质)</strong>：约 ${fatTarget}g / 天（坚果、橄榄油、牛油果）</li>
+            <li><strong>碳水化合物 (控量)</strong>：约 ${safeCarb}g / 天（慢碳：燕麦、糙米、红薯）</li>
+            <li><strong>脂肪 (优质)</strong>：约 ${safeFat}g / 天（坚果、橄榄油、牛油果）</li>
             <li><strong>全天水耗</strong>：至少 3L 纯净水，加速钠代谢。</li>
           </ul>
+          ${safetyWarnings.length ? '<div style="margin-top:0.6rem;padding:0.6rem 0.8rem;background:rgba(197,48,48,0.06);border-left:3px solid var(--accent-color);border-radius:0 4px 4px 0;font-size:0.78rem;color:var(--accent-color);">' + safetyWarnings.map(function(w){return '⚠️ '+w}).join('<br>') + '</div>' : ''}
         </div>
       `;
       exerciseSection = `
@@ -660,21 +884,22 @@ document.addEventListener('DOMContentLoaded', () => {
             <li><strong>有氧冲刺</strong>：30-40 分钟稳态有氧 + 10 分钟 HIIT 收尾。</li>
             <li><strong>辅助力量</strong>：哑铃深蹲 4组*20次 + 俯卧撑 4组*15次，组休 45 秒。</li>
             <li><strong>腹肌雕琢</strong>：仰卧卷腹 4组*20次 + 平板支撑 3组*60秒。</li>
-            <li><strong>睡眠死命令</strong>：23:30 前熄火卧床，燃脂黄金窗口。</li>
+            <li><strong>拉伸放松</strong>：训练后拉伸 10 分钟，加入泡沫轴滚压。</li>
           </ul>
         </div>
       `;
     } else {
       dietSection = `
         <div style="margin-bottom: 1.25rem;">
-          <h4 style="color: var(--accent-orange); margin-bottom: 0.5rem;">💪 今日增肌合成底座：${targetCalories} kcal</h4>
+          <h4 style="color: var(--accent-orange); margin-bottom: 0.5rem;">💪 今日增肌合成底座：${safeCalories} kcal</h4>
           <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${feedbackNote}</p>
           <ul style="padding-left: 1.25rem; font-size: 0.9rem;">
             <li><strong>蛋白质</strong>：约 ${proteinTarget}g / 天（足量蛋白维持正氮平衡）</li>
-            <li><strong>碳水化合物 (超量)</strong>：约 ${carbTarget}g / 天（充足糖原储备）</li>
-            <li><strong>脂肪</strong>：约 ${fatTarget}g / 天（维持激素水平）</li>
+            <li><strong>碳水化合物 (超量)</strong>：约 ${safeCarb}g / 天（充足糖原储备）</li>
+            <li><strong>脂肪</strong>：约 ${safeFat}g / 天（维持激素水平）</li>
             <li><strong>全天水耗</strong>：至少 3.5L，保证肌肉合成代谢顺畅。</li>
           </ul>
+          ${safetyWarnings.length ? '<div style="margin-top:0.6rem;padding:0.6rem 0.8rem;background:rgba(197,48,48,0.06);border-left:3px solid var(--accent-color);border-radius:0 4px 4px 0;font-size:0.78rem;color:var(--accent-color);">' + safetyWarnings.map(function(w){return '⚠️ '+w}).join('<br>') + '</div>' : ''}
         </div>
       `;
       exerciseSection = `
@@ -684,13 +909,18 @@ document.addEventListener('DOMContentLoaded', () => {
             <li><strong>关节保护</strong>：负重前充分热身 15 分钟，激活肩/髋/核心。</li>
             <li><strong>抗阻主导</strong>：深蹲 4组*10次 + 卧推 4组*10次 + 硬拉 4组*8次。</li>
             <li><strong>腹肌加练</strong>：悬垂提膝 4组*15次 + 交替单车 4组*20次。</li>
-            <li><strong>超量恢复</strong>：23:30 前挺尸，生长激素修复肌纤维。</li>
+            <li><strong>拉伸放松</strong>：训练后拉伸 15 分钟，泡沫轴放松全身。</li>
           </ul>
+          ${safetyWarnings.length ? '<div style="margin-top:0.6rem;padding:0.6rem 0.8rem;background:rgba(197,48,48,0.06);border-left:3px solid var(--accent-color);border-radius:0 4px 4px 0;font-size:0.78rem;color:var(--accent-color);">' + safetyWarnings.map(function(w){return '⚠️ '+w}).join('<br>') + '</div>' : ''}
         </div>
       `;
     }
 
-    const planHTML = '<div style="display: flex; flex-direction: column; gap: 1rem;"><div style="border: 1px solid var(--panel-border); border-radius: 16px; padding: 1.25rem; background: rgba(255, 255, 255, 0.15);">' + dietSection + '</div><div style="border: 1px solid var(--panel-border); border-radius: 16px; padding: 1.25rem; background: rgba(255, 255, 255, 0.15);">' + exerciseSection + '</div></div>';
+    const planHTML = '<div style="display: flex; flex-direction: column; gap: 1rem;">' +
+      '<div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 1.25rem; background: var(--paper-light);">' + dietSection + '</div>' +
+      '<div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 1.25rem; background: var(--paper-light);">' + exerciseSection + '</div>' +
+      '<p style="font-size:0.68rem;color:var(--text-secondary);text-align:center;margin-top:0.5rem;">⚠️ 以上计划由 AI 生成，仅供参考。在开始任何饮食或运动计划前请咨询专业医师。</p>' +
+      '</div>';
     if (planContent) planContent.innerHTML = planHTML;
     if (planContentInline) planContentInline.innerHTML = planHTML;
   }
@@ -755,10 +985,16 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    var weightVal = parseFloat(ciWeight.value);
+    if (isNaN(weightVal) || weightVal <= 20 || weightVal >= 300) {
+      showToast('请输入有效的体重数值（20-300 kg）', 'error');
+      return;
+    }
+
     const checkInData = {
       date: new Date().toLocaleDateString('zh-CN'),
       timestamp: Date.now(),
-      currentWeight: parseFloat(ciWeight.value),
+      currentWeight: weightVal,
       weightCondition: ciWeightCondition.value,
       stateDescription: ciState.value.trim(),
       breakfast: ciBreakfast.value.trim() || '未吃/未填',
@@ -766,7 +1002,17 @@ document.addEventListener('DOMContentLoaded', () => {
       dinner: ciDinner.value.trim(),
       tonightExercise: ciExercise.value.trim(),
       exerciseFeedback: ciFeedback.value.trim(),
-      ultimateGoal: ciGoalFlag.value.trim()
+      ultimateGoal: ciGoalFlag.value.trim(),
+      // Profile context for AI personalization
+      profileGender: profile.gender || 'male',
+      profileAge: profile.age || 25,
+      profileHeight: profile.height || 170,
+      profileWeight: profile.weight || 70,
+      profileTargetWeight: profile.targetWeight || 65,
+      profileGoal: profile.goal || 'fat_loss',
+      profileIllnesses: profile.illnesses || '无',
+      profileDeadline: profile.deadlineDate || '',
+      recentHistory: history.slice(0, 5).map(function(h) { return h.date + ': ' + h.weight + 'kg - ' + (h.checkIn.stateDescription||'') }).join(' | ') || '暂无'
     };
 
     // Save previous weight for AI calculations
@@ -819,6 +1065,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderHistoryList();
       updateStreakUI();
       renderWeightChart();
+      renderTaskList();
 
     } catch (err) {
       aiLoading.style.display = 'none';
@@ -1149,18 +1396,18 @@ function renderActions(group) {
         datasets: [{
           label: '体重 (kg)',
           data: data,
-          borderColor: '#0a84ff',
-          backgroundColor: 'rgba(10,132,255,0.1)',
+          borderColor: '#4D94FF',
+          backgroundColor: 'rgba(77,148,255,0.08)',
           fill: true, tension: 0.3,
-          pointRadius: 4, pointBackgroundColor: '#0a84ff'
+          pointRadius: 4, pointBackgroundColor: '#4D94FF'
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: '#8e8e93', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-          y: { ticks: { color: '#8e8e93', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          x: { ticks: { color: '#7D7F84', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { ticks: { color: '#7D7F84', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
         }
       }
     });
@@ -1171,7 +1418,7 @@ function renderActions(group) {
     if (safeGet('guide_done')) return;
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
-    overlay.innerHTML = '<div style="background:#1c1c1e;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem;max-width:380px;width:90%;text-align:center;color:#fff;"><h2 style="margin:0 0 0.5rem;">🏋️ 欢迎来到 Morph.AI</h2><p style="color:#999;font-size:0.8rem;margin-bottom:1rem;">AI驱动 · 每日重塑</p><div style="text-align:left;font-size:0.85rem;line-height:2;"><div>📝 <b>每日打卡</b> — 记录体重饮食运动</div><div>🍽️ <b>饮食AI</b> — 拍照识别热量分析</div><div>🏆 <b>成就殿堂</b> — 积分解锁徽章等级</div><div>🏋️ <b>动作库</b> — 44动作+视频教学</div><div>📊 <b>历史记录</b> — 追踪体重趋势曲线</div><div>👥 <b>社区</b> — 分享心得互相鼓励</div><div>👤 <b>我的</b> — 运动数据邀请好友</div></div><button id="_gdBtn" style="background:linear-gradient(135deg,#0a84ff,#30d158);border:none;color:#fff;padding:0.7rem 2rem;border-radius:12px;font-size:0.9rem;font-weight:700;cursor:pointer;margin-top:1.2rem;">知道了，开始使用</button></div>';
+    overlay.innerHTML = '<div style="background:#141418;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:2rem;max-width:380px;width:90%;text-align:center;color:#F2F0ED;"><h2 style="margin:0 0 0.5rem;">🏋️ 欢迎来到 教练.AI</h2><p style="color:#7D7F84;font-size:0.8rem;margin-bottom:1rem;">AI驱动 · 每日重塑</p><div style="text-align:left;font-size:0.85rem;line-height:2;"><div>📝 <b>每日打卡</b> — 记录体重饮食运动</div><div>🍽️ <b>饮食AI</b> — 拍照识别热量分析</div><div>🏆 <b>成就殿堂</b> — 积分解锁徽章等级</div><div>🏋️ <b>动作库</b> — 44动作+视频教学</div><div>📊 <b>历史记录</b> — 追踪体重趋势曲线</div><div>👥 <b>社区</b> — 分享心得互相鼓励</div><div>👤 <b>我的</b> — 运动数据邀请好友</div></div><button id="_gdBtn" style="background:#FF3B3B;border:none;color:#fff;padding:0.7rem 2rem;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer;margin-top:1.2rem;">知道了，开始使用</button></div>';
     document.body.appendChild(overlay);
     document.getElementById('_gdBtn').onclick = function() { overlay.remove(); safeSet('guide_done', true); };
   }
@@ -1295,24 +1542,24 @@ function renderActions(group) {
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       const w = 600, h = 800;
-      ctx.fillStyle = '#0f0f11';
+      ctx.fillStyle = '#0A0A0C';
       ctx.fillRect(0, 0, w, h);
       // Gradient accent
       const g = ctx.createLinearGradient(0, 0, w, h);
-      g.addColorStop(0, 'rgba(10,132,255,0.15)');
-      g.addColorStop(1, 'rgba(255,149,0,0.1)');
+      g.addColorStop(0, 'rgba(255,59,59,0.12)');
+      g.addColorStop(1, 'rgba(77,148,255,0.08)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
       // Title
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('Morph.AI', w/2, 200);
-      ctx.font = '20px sans-serif'; ctx.fillStyle = '#8e8e93';
+      ctx.fillStyle = '#F2F0ED'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('教练.AI', w/2, 200);
+      ctx.font = '20px sans-serif'; ctx.fillStyle = '#7D7F84';
       ctx.fillText('AI驱动 · 每日重塑', w/2, 240);
       // Stats
       const s = calcStreak();
-      ctx.font = 'bold 72px sans-serif'; ctx.fillStyle = '#ff9f0a';
+      ctx.font = 'bold 72px sans-serif'; ctx.fillStyle = '#FF3B3B';
       ctx.fillText(`${s.current} 天`, w/2, 360);
-      ctx.font = '24px sans-serif'; ctx.fillStyle = '#8e8e93';
+      ctx.font = '24px sans-serif'; ctx.fillStyle = '#7D7F84';
       ctx.fillText('连续打卡', w/2, 395);
       // Weight change
       const initialW = profile ? profile.weight : 0;
@@ -1320,12 +1567,12 @@ function renderActions(group) {
       const diff = (latestW - initialW).toFixed(1);
       const arrow = diff < 0 ? '↓' : diff > 0 ? '↑' : '→';
       ctx.font = 'bold 40px sans-serif';
-      ctx.fillStyle = diff < 0 ? '#30d158' : '#ff9f0a';
+      ctx.fillStyle = diff < 0 ? '#00E5A0' : '#FF8C42';
       ctx.fillText(`${arrow} ${Math.abs(diff)} kg`, w/2, 480);
-      ctx.font = '20px sans-serif'; ctx.fillStyle = '#8e8e93';
+      ctx.font = '20px sans-serif'; ctx.fillStyle = '#7D7F84';
       ctx.fillText('体重变化', w/2, 510);
       // URL
-      ctx.font = '18px sans-serif'; ctx.fillStyle = '#8e8e93';
+      ctx.font = '18px sans-serif'; ctx.fillStyle = '#7D7F84';
       ctx.fillText('扫码下载 · morph.fit', w/2, h - 80);
       // Divider
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;

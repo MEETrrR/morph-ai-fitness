@@ -140,35 +140,50 @@ function generateLocalAudit(profile, checkIn, lastWeight) {
     bioLogicText += ` 同时考虑到你的身体状况（${profile.illnesses}），我们已在运动负荷及关节压力上做出了保护性调整。`;
   }
 
-  // Target deadline calculation
-  let targetText = "";
+  // Deadline feasibility + disclaimer
+  let deadlineWarning = '';
   if (profile.deadlineDate) {
     const today = new Date();
     const deadline = new Date(profile.deadlineDate);
     const timeDiff = deadline.getTime() - today.getTime();
     const daysLeft = Math.ceil(timeDiff / (1000 * 3600 * 24));
     const weightGap = currentWeight - targetWeight;
-    
+
     if (daysLeft > 0) {
       if (isFatLoss) {
         if (weightGap <= 0) {
           targetText = `你已提前达成目标体重 ${targetWeight} kg！当前领先死线 Flag。继续稳住，塑造极致线条！`;
         } else {
-          targetText = `距离 ${profile.deadlineDate} 死线还有最后 ${daysLeft} 天！离目标 ${targetWeight} kg 还差 ${weightGap.toFixed(1)} kg。每天需稳步赤字约 ${(weightGap / daysLeft).toFixed(2)} kg！`;
+          var dailyLoss = weightGap / daysLeft;
+          targetText = `距离 ${profile.deadlineDate} 死线还有最后 ${daysLeft} 天！离目标 ${targetWeight} kg 还差 ${weightGap.toFixed(1)} kg。每天需稳步赤字约 ${dailyLoss.toFixed(2)} kg。`;
+          if (dailyLoss > 0.15) {
+            deadlineWarning = `\n\n⚠️ **死线可行性警告**：当前目标要求每天减 ${dailyLoss.toFixed(2)} kg（健康上限约 0.1-0.15 kg/天）。该目标非常激进，长期执行可能导致代谢损伤、肌肉流失和反弹风险。建议延长死线或调整目标体重，以健康为先。`;
+          } else if (dailyLoss > 0.1) {
+            deadlineWarning = `\n\n💡 **提示**：当前减重速率（${dailyLoss.toFixed(2)} kg/天）处于健康上限。建议搭配足量蛋白和力量训练以保护肌肉。如果感到极度疲劳或饥饿，适当放宽速度。`;
+          }
         }
       } else {
-        // Muscle gain
         if (weightGap >= 0) {
           targetText = `你已成功达成增肌目标体重 ${targetWeight} kg！当前正在巩固期。继续无情轰炸！`;
         } else {
+          var dailyGain = Math.abs(weightGap) / daysLeft;
           targetText = `距离 ${profile.deadlineDate} 死线还有最后 ${daysLeft} 天！离增重目标 ${targetWeight} kg 还差 ${Math.abs(weightGap).toFixed(1)} kg。冲刺阶段，合成代谢火力全开！`;
+          if (dailyGain > 0.2) {
+            deadlineWarning = `\n\n⚠️ **增重可行性警告**：当前目标要求每天增重 ${dailyGain.toFixed(2)} kg（健康上限约 0.1-0.2 kg/周肌肉）。该目标极度不现实，请调整为更长期的目标，避免被迫采用不健康的增重手段。`;
+          }
         }
       }
     } else {
-      targetText = `死线已到（${profile.deadlineDate}）！当前体重 ${currentWeight} kg，目标体重 ${targetWeight} kg。立刻进行盘点，进入下一阶段进化！`;
+      targetText = `死线已到（${profile.deadlineDate}）！当前体重 ${currentWeight} kg，目标体重 ${targetWeight} kg。身体安全第一，请根据当前进度重新设定合理的新目标。`;
     }
   } else {
-    targetText = `努力挺进 ${targetWeight} kg！无惧死线，稳扎稳打。`;
+    targetText = `稳步推进 ${targetWeight} kg！无惧时间，稳扎稳打。`;
+  }
+
+  // Weight swing detection
+  var weightSwingWarning = '';
+  if (Math.abs(diff) > 2) {
+    weightSwingWarning = `\n\n⚠️ **数据异常提醒**：今日体重波动 ${Math.abs(diff).toFixed(1)} kg，超出正常日间波动范围（0.5-2 kg）。可能原因：称重时间不一致、饮水/进食状态不同、衣物重量差异。建议固定晨起空腹称重以保证数据一致性。`;
   }
 
   // 2. Diet Audit
@@ -185,13 +200,18 @@ function generateLocalAudit(profile, checkIn, lastWeight) {
   const workoutType = inspectWorkoutType(checkIn.tonightExercise, checkIn.exerciseFeedback);
   const drillsText = getCustomDrills(workoutType, isFatLoss);
   
-  // Joint protection analysis
+  // Joint protection / injury analysis
   let recoveryText = "";
   const lowerFeedback = checkIn.exerciseFeedback.toLowerCase();
-  if (lowerFeedback.includes('酸') || lowerFeedback.includes('痛') || lowerFeedback.includes('累') || lowerFeedback.includes('伤') || lowerFeedback.includes('疼')) {
-    recoveryText = `检测到关节/肌肉反馈【${checkIn.exerciseFeedback}】。建议立刻温水泡脚 15 分钟，对酸痛处进行静态拉伸或泡沫轴滚压。必须坚守 11:30 挺尸死线，生长激素全力修复！`;
+  const hasInjury = lowerFeedback.includes('伤') || lowerFeedback.includes('疼') || lowerFeedback.includes('剧痛');
+  const hasSore = lowerFeedback.includes('酸') || lowerFeedback.includes('累');
+  
+  if (hasInjury) {
+    recoveryText = `🚑 **检测到疼痛/损伤信号【${checkIn.exerciseFeedback}】——这不是普通的酸痛！**\n* **立即停止**相关部位的高强度训练，避免二次损伤。\n* **建议**：对受伤部位冰敷（急性期 48h 内），48h 后可热敷。如疼痛持续超过 3 天或加重，请务必就医检查，排除韧带/半月板/肌腱损伤。\n* **安全替代训练**：对侧肢体/不涉及受伤关节的低强度运动（如受伤下肢可做上肢训练）。\n* **休息不是偷懒，是保护！**`;
+  } else if (hasSore) {
+    recoveryText = `检测到肌肉酸痛/疲劳【${checkIn.exerciseFeedback}】。建议温水泡脚 15 分钟，对酸痛处进行静态拉伸或泡沫轴滚压。保证充足睡眠，生长激素全力修复！`;
   } else {
-    recoveryText = `当前体感极佳。训练后进行全身拉伸各 30 秒。锁定 11:30 挺尸死线，今晚优质睡眠是最好的修复补剂。`;
+    recoveryText = `当前体感极佳。训练后进行全身拉伸各 30 秒。锁定充足睡眠时间，今晚优质睡眠是最好的修复补剂。`;
   }
 
   // 4. Close Slogan
@@ -200,10 +220,12 @@ function generateLocalAudit(profile, checkIn, lastWeight) {
     : `无情加重，疯狂干饭，向着钢筋铁骨与 ${targetWeight} kg 的野兽体格，全速碾压！冲！！！`;
 
   // Return the standard 4-module formatted output
-  return `## 🚀 模块一：【大盘审计与硬核震慑】
+  return `> ⚠️ **免责声明**：以下内容由 AI 生成，仅供参考和教育目的，不构成医疗诊断、治疗建议或专业运动指导。在开始任何饮食、运动或补充剂计划前，请咨询医生或注册营养师。如运动中感到疼痛或不适，请立即停止并就医。
+
+## 🚀 模块一：【大盘审计与硬核震慑】
 > (针对你最新的体重和状态，进行生化逻辑拆解。跌了狠狠夸、涨了找 Bug、沉沦了直接格式化心理负担，立住信心底座！)
 * **生化逻辑解析**：${bioLogicText}
-* **战绩同步**：${targetText}
+* **战绩同步**：${targetText}${deadlineWarning}${weightSwingWarning}
 
 ## 🛠️ 模块二：【干饭代码一键修复 (饮食补丁)】
 > (对你吃进去的食物进行严格的生化审计，卡死主食碳水和隐形炸弹)
@@ -215,7 +237,7 @@ ${drillsText}
 * **关节保护伞**：${recoveryText}
 
 ## 🚨 模块四：【今日教练收盘指令】
-> (用最强金有力的死命令，逼你立刻放下筷子、推开碳水、去球场无情输出或准时挺尸)
+> (用最强有力的死命令，逼你立刻放下筷子、推开碳水、去球场无情输出或准时挺尸)
 * **最终口号**：${slogan}`;
 }
 
