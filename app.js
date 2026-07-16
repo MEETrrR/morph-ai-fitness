@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const email = setEmail.value.trim();
     const password = setPassword.value.trim();
     if (!email || !password) { authMsg.innerText = '请填写邮箱和密码'; return; }
-    if (password.length < 6) { authMsg.innerText = '密码至少6位'; return; }
+    if (password.length < 8) { authMsg.innerText = '密码至少8位，需包含大小写字母和数字'; return; }
     authMsg.innerText = '注册中...';
     try {
       const data = await apiCall('/auth/register', 'POST', { email, password });
@@ -319,8 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!email) { authMsg.innerText = '请先输入邮箱'; return; }
     try {
       const data = await apiCall('/auth/reset-password', 'POST', { email, password: '' });
-      alert('新密码: ' + data.new_password + '\n\n请复制保存，登录后可修改。');
-      authMsg.innerText = '';
+      if (data.reset_link) {
+        var np = prompt('重置链接: ' + data.reset_link + '\n\n输入新密码(至少8位):');
+        if (np && np.length >= 8) {
+          await apiCall('/auth/reset-password/confirm', 'POST', { token: data.reset_link.split('token=')[1], new_password: np });
+          authMsg.innerText = '密码已重置，请用新密码登录';
+        }
+      } else {
+        authMsg.innerText = data.message || '重置失败';
+      }
     } catch (e) { authMsg.innerText = e.message; }
   });
 
@@ -1709,7 +1716,7 @@ function renderActions(group) {
   var closeLogin = document.getElementById("closeLoginModal"); if (closeLogin) closeLogin.addEventListener("click", function() { document.getElementById("loginModal").classList.remove("active"); });
   var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
   var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 6) { msg.innerText = "请填写邮箱和密码(至少6位)"; return; } msg.innerText = "注册中..."; try { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！赠送3天免费试用","success"); updateMembershipUI(); updateSettingsAuthUI(); } catch(e) { msg.innerText = e.message; } });
-  var btnLF = document.getElementById("loginForgotBtn"); if (btnLF) btnLF.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var msg = document.getElementById("loginMsg"); if (!email) { msg.innerText = "请先输入邮箱"; return; } try { var d = await apiCall("/auth/reset-password", "POST", { email:email, password:"" }); msg.innerText = "新密码: " + d.new_password; } catch(e) { msg.innerText = e.message; } });
+  var btnLF = document.getElementById("loginForgotBtn"); if (btnLF) btnLF.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var msg = document.getElementById("loginMsg"); if (!email) { msg.innerText = "请先输入邮箱"; return; } try { var d = await apiCall("/auth/reset-password", "POST", { email:email, password:"" }); msg.innerText = d.message || "重置邮件已发送"; } catch(e) { msg.innerText = e.message; } });
 
   // SCENARIO
   var scenarioView = document.getElementById("scenarioView"); var selectedScene = "home_student";
