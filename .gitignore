@@ -1,0 +1,32 @@
+backend/fitness.db
+backend/venv/
+backend/__pycache__/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+wiz-section.txt
+
+# Temporary test files
+*test*.html
+*debug*.html
+*bare*.html
+*hello*.html
+*inline*.html
+*minjs*.html
+*redtest*.html
+*step*.html
+*final*.html
+app.html
+go.html
+ai-v2.js
+ai-v3.js
+app-v2.js
+app-v3.js
+reset.html
+cleansw.html
+full.html
+
+# Temp/reset files
+reset-local.html
+.superpowers/

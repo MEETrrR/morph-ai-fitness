@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>隐私政策 - Morph.AI</title>
+<style>
+body { font-family: -apple-system, sans-serif; max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem; color: #1d1d1f; line-height: 1.8; }
+h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+h2 { font-size: 1.15rem; margin-top: 2rem; color: #333; }
+p, li { font-size: 0.92rem; color: #555; }
+@media (prefers-color-scheme: dark) { body { background: #1c1c1e; color: #f5f5f7; } h2 { color: #ddd; } p, li { color: #aaa; } }
+</style>
+</head>
+<body>
+<h1>Morph.AI 隐私政策</h1>
+<p>更新日期：2026年7月1日</p>
+
+<h2>1. 我们收集的信息</h2>
+<p>为提供服务，我们收集以下信息：</p>
+<ul>
+  <li><strong>账户信息：</strong>电子邮箱地址、加密密码</li>
+  <li><strong>身体数据：</strong>性别、年龄、身高、体重、目标体重、伤病情况</li>
+  <li><strong>日常打卡数据：</strong>每日体重记录、饮食内容、运动类型、身体反馈</li>
+  <li><strong>使用数据：</strong>访问记录、功能使用频率（通过百度统计）</li>
+</ul>
+
+<h2>2. 信息的使用</h2>
+<p>我们使用收集的信息用于：</p>
+<ul>
+  <li>生成个性化的饮食建议和训练计划</li>
+  <li>AI审计分析和体重趋势追踪</li>
+  <li>改善和优化服务体验</li>
+  <li>发送账户相关通知（如续费提醒）</li>
+</ul>
+
+<h2>3. 信息的存储与安全</h2>
+<p>所有用户数据存储在阿里云服务器中，采用加密传输（HTTPS）和密码哈希存储（PBKDF2-SHA256）。我们采取合理的技术手段保护您的数据安全。用户可随时在设置中修改或删除个人信息。</p>
+
+<h2>4. 信息的共享</h2>
+<p>我们不会将您的个人信息出售给第三方。在以下情况下可能共享：</p>
+<ul>
+  <li>法律要求披露时</li>
+  <li>AI审计功能调用DeepSeek API（仅传输匿名化的打卡数据，不含邮箱等个人标识）</li>
+</ul>
+
+<h2>5. 用户权利</h2>
+<p>您拥有以下权利：</p>
+<ul>
+  <li><strong>访问：</strong>查看我们存储的您的个人数据</li>
+  <li><strong>更正：</strong>修改不准确的个人信息</li>
+  <li><strong>删除：</strong>在设置中选择"注销账号"，我们将永久删除您的所有数据</li>
+  <li><strong>导出：</strong>联系我们获取个人数据的副本</li>
+</ul>
+
+<h2>6. 联系我们</h2>
+<p>隐私相关问题请联系：privacy@<span id="domain"></span></p>
+
+<script>document.querySelector('#domain').textContent = location.hostname || 'morph.fit';</script>
+</body>
+</html>

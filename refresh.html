@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>强制刷新</title></head>
+<body style="background:#0f0f11;color:white;text-align:center;padding-top:40vh;font-family:sans-serif;">
+  <h2>🧹 正在清除缓存...</h2>
+  <p id="msg"></p>
+  <script>
+    (async () => {
+      document.getElementById('msg').innerText = '清除 localStorage...';
+      localStorage.clear();
+      document.getElementById('msg').innerText = '清除 Service Worker...';
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+      }
+      document.getElementById('msg').innerText = '清除 Cache Storage...';
+      const keys = await caches.keys();
+      for (const k of keys) await caches.delete(k);
+      document.getElementById('msg').innerText = '✅ 完成！即将跳转...';
+      setTimeout(() => { location.href = '/'; }, 800);
+    })();
+  </script>
+</body></html>
