@@ -203,22 +203,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- AUTH & MEMBERSHIP ---
   function updateMembershipUI() {
     if (!membershipCard || !memberStatusLabel || !memberExpireText) return;
-    if (authToken && currentUser) {
-      const now = Date.now();
-      const expired = currentUser.membership_expires_at ? new Date(currentUser.membership_expires_at).getTime() : 0;
-      if (expired > now) {
-        memberStatusLabel.innerText = '👑 付费会员';
-        const days = Math.ceil((expired - now) / 86400000);
-        memberExpireText.innerText = `剩余 ${days} 天`;
-        membershipCard.style.border = '1px solid rgba(255,140,66,0.35)';
-      } else {
-        memberStatusLabel.innerText = '免费试用';
-        memberExpireText.innerText = currentUser.is_trial ? '试用已过期，请升级' : '请升级会员';
-      }
-    } else {
-      memberStatusLabel.innerText = '未登录';
-      memberExpireText.innerText = '登录后解锁AI功能';
-    }
+    memberStatusLabel.innerText = authToken ? '🎉 免费内测中' : '未登录';
+    memberExpireText.innerText = '';
   }
 
   function updateSettingsAuthUI() {
@@ -226,17 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (authToken && currentUser) {
       authBlock.style.display = 'none';
       memberBlock.style.display = 'flex';
-      const now = Date.now();
-      const expired = currentUser.membership_expires_at ? new Date(currentUser.membership_expires_at).getTime() : 0;
-      if (expired > now) {
-        memberPlanName.innerText = '👑 付费会员';
-        memberPlanDesc.innerText = `有效期至 ${new Date(expired).toLocaleDateString('zh-CN')}`;
-      } else {
-        memberPlanName.innerText = '免费试用';
-        const trialEnd = currentUser.trial_ends_at ? new Date(currentUser.trial_ends_at).getTime() : 0;
-        const remaining = Math.max(0, Math.ceil((trialEnd - now) / 86400000));
-        memberPlanDesc.innerText = `剩余 ${remaining} 天试用期`;
-      }
+      memberPlanName.innerText = '🎉 免费内测中';
+      memberPlanDesc.innerText = '所有功能免费开放';
     } else {
       authBlock.style.display = 'flex';
       memberBlock.style.display = 'none';
@@ -297,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.setItem('ai_fitness_token', authToken);
       localStorage.setItem('ai_fitness_user', JSON.stringify(currentUser));
       authMsg.innerText = '';
-      showToast('注册成功！赠送3天免费试用', 'success');
+      showToast('注册成功！欢迎加入内测', 'success');
       updateMembershipUI();
       updateSettingsAuthUI();
     } catch (e) { authMsg.innerText = e.message; }
@@ -1194,7 +1171,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --- UPGRADE MODAL ---
-  upgradeBtn.addEventListener('click', () => { upgradeModal.classList.add('active'); });
+  upgradeBtn.addEventListener('click', () => { showToast('内测期间全部免费', 'info'); });
   upgradeBtnSettings.addEventListener('click', () => {
     settingsModal.classList.remove('active');
     upgradeModal.classList.add('active');
@@ -1437,7 +1414,7 @@ function renderActions(group) {
     if (!aiGuestUpgradeBtn || !aiGuestMsg) return;
     if (!authToken) {
       aiGuestUpgradeBtn.style.display = '';
-      aiGuestMsg.textContent = '未登录状态下仅可使用本地规则审计。注册即送3天免费试用，解锁AI深度生化分析。';
+      aiGuestMsg.textContent = '登录后可解锁 AI 深度审计。未登录时也可使用本地智能分析。';
     } else {
       aiGuestUpgradeBtn.style.display = 'none';
       aiGuestMsg.textContent = '请先在【今日数据打卡】中提交你的体重、饮食与运动反馈，教练才能对你实施生化格式化审计。';
@@ -1674,7 +1651,7 @@ function renderActions(group) {
     if (!myProfile || !profileContent) return;
     var lv = getLevel(); var avatarUrl = myProfile.avatar_path ? serverUrl + "/api/uploads/" + myProfile.avatar_path : "";
     var avHTML = avatarUrl ? '<img src="' + avatarUrl + '" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid var(--accent-color);">' : '<div style="width:70px;height:70px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-size:2rem;">👤</div>';
-    var memHTML = myProfile.membership_expires_at ? '<span style="color:var(--accent-orange);">👑 会员至 ' + myProfile.membership_expires_at.slice(0,10) + '</span>' : (myProfile.is_trial ? '<span style="color:var(--accent-green);">🎁 免费试用中</span>' : '<span>未开通会员</span>');
+    var memHTML = '<span style="color:var(--accent-color);">🎉 免费内测</span>';
     profileContent.innerHTML = '<div style="text-align:center;margin-bottom:1.5rem;"><label style="cursor:pointer;">' + avHTML + '<input type="file" id="avatarInput" accept="image/*" style="display:none;"></label><h3>' + (myProfile.nickname||"用户"+myProfile.user_id) + '</h3><p style="font-size:0.8rem;color:var(--text-secondary);">' + lv.ico + ' Lv.' + lv.level + ' ' + lv.name + '</p><p style="font-size:0.75rem;">' + memHTML + '</p></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:1rem;"><div class="profile-stat-box"><strong>' + (myProfile.checkins_count||0) + '</strong><small>打卡</small></div><div class="profile-stat-box"><strong>' + calcStreak().current + '</strong><small>连续</small></div><div class="profile-stat-box"><strong>' + ((gameState._musclesTrained||[]).length) + '</strong><small>部位</small></div></div><div class="badge-grid" id="profileBadges2"></div><div style="margin-top:1rem;"><h4>📝 我的帖子</h4><div id="myPosts2"></div></div>';
     var ai = document.getElementById("avatarInput"); if (ai) ai.addEventListener("change", async function(e) { var f = e.target.files[0]; if (!f) return; var fd = new FormData(); fd.append("avatar", f); try { await fetch(API_BASE + "/user/avatar", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); showToast("头像已更新!","success"); window._loadProfile(); } catch(e){ showToast("上传失败","error"); } });
     var bg = document.getElementById("profileBadges2"); if (bg) BADGES.forEach(function(b) { var e = gameState.earnedBadges.indexOf(b.id) >= 0; bg.innerHTML += '<div class="badge-item ' + (e?"earned":"locked") + '"><span>' + b.ico + '</span><strong>' + b.name + '</strong></div>'; });
@@ -1715,7 +1692,7 @@ function renderActions(group) {
   var headerLoginBtn = document.getElementById("headerLoginBtn"); if (headerLoginBtn) headerLoginBtn.addEventListener("click", function() { window._openLogin(); });
   var closeLogin = document.getElementById("closeLoginModal"); if (closeLogin) closeLogin.addEventListener("click", function() { document.getElementById("loginModal").classList.remove("active"); });
   var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
-  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 6) { msg.innerText = "请填写邮箱和密码(至少6位)"; return; } msg.innerText = "注册中..."; try { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！赠送3天免费试用","success"); updateMembershipUI(); updateSettingsAuthUI(); } catch(e) { msg.innerText = e.message; } });
+  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 8) { msg.innerText = "请填写邮箱和密码(至少8位)"; return; } msg.innerText = "注册中..."; try { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！欢迎加入内测","success"); updateMembershipUI(); updateSettingsAuthUI(); } catch(e) { msg.innerText = e.message; } });
   var btnLF = document.getElementById("loginForgotBtn"); if (btnLF) btnLF.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var msg = document.getElementById("loginMsg"); if (!email) { msg.innerText = "请先输入邮箱"; return; } try { var d = await apiCall("/auth/reset-password", "POST", { email:email, password:"" }); msg.innerText = d.message || "重置邮件已发送"; } catch(e) { msg.innerText = e.message; } });
 
   // SCENARIO

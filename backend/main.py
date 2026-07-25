@@ -268,10 +268,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return dict(user)
 
 def check_membership(user: dict) -> bool:
-    now = datetime.now(timezone.utc).isoformat()
-    if user.get("membership_expires_at") and user["membership_expires_at"] > now: return True
-    if user.get("is_trial") and user.get("trial_ends_at") and user["trial_ends_at"] > now: return True
-    return False
+    # FREE BETA: all authenticated users can use AI features
+    return True
 
 # --- Routes ---
 @app.get("/api/health")
