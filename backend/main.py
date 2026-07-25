@@ -17,10 +17,14 @@ from pydantic import BaseModel, field_validator
 # --- Config ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+_using_supabase_jwt = bool(SUPABASE_JWT_SECRET)
 if not SUPABASE_JWT_SECRET:
     SUPABASE_JWT_SECRET = os.environ.get("SECRET_KEY", "")
     if not SUPABASE_JWT_SECRET:
         raise RuntimeError("FATAL: SUPABASE_JWT_SECRET (or SECRET_KEY) must be set")
+    print("WARNING: Using SECRET_KEY as JWT secret. Set SUPABASE_JWT_SECRET for Supabase auth.")
+else:
+    print("Using SUPABASE_JWT_SECRET for JWT verification.")
 SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET.encode()
 SECRET_KEY = SUPABASE_JWT_SECRET  # Backward compat for PUSH_SECRET derivation
 TOKEN_EXPIRE_DAYS = 30
@@ -277,6 +281,11 @@ def check_rate_limit(user_id, limit: int = AI_DAILY_LIMIT):
     if len(_rate_limits[key]) >= limit:
         raise HTTPException(status_code=429, detail=f"今日AI审计次数已达上限({limit}次/天)，请明天再来")
     _rate_limits[key].append(now)
+
+def create_token(user_id, email: str = "") -> str:
+    now = datetime.now(timezone.utc)
+    payload = {"sub": str(user_id), "email": email, "exp": now + timedelta(days=TOKEN_EXPIRE_DAYS), "iat": now}
+    return pyjwt.encode(payload, SUPABASE_JWT_SECRET, algorithm="HS256")
 
 # --- Routes ---
 @app.get("/api/health")
