@@ -337,7 +337,8 @@ window.AiEngine = {
  * Call backend AI proxy (requires auth token, server handles API key + membership check)
  */
 async function generateServerAudit(authToken, checkIn) {
-  const response = await fetch('http://localhost:8000/api/ai/audit', {
+  const apiBase = window.API_BASE || 'http://localhost:8000/api';
+  const response = await fetch(apiBase + '/ai/audit', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

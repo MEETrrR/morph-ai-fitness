@@ -22,6 +22,7 @@ SECRET_KEY = SECRET_KEY.encode()
 TOKEN_EXPIRE_DAYS = 30
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:8080")
+ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", f"http://localhost:8080,http://localhost:5173,http://127.0.0.1:8080,http://127.0.0.1:8000").split(",") if o.strip()]
 DB_PATH = os.path.join(os.path.dirname(__file__), "fitness.db")
 FREE_TRIAL_DAYS = 3
 MONTHLY_PRICE = 19
@@ -49,7 +50,7 @@ def filter_content(text: str) -> tuple:
     return sanitize(text, 500), False
 
 app = FastAPI(title="Morph.AI API")
-app.add_middleware(CORSMiddleware, allow_origins=[FRONTEND_ORIGIN], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], allow_credentials=True)
+app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], allow_credentials=True)
 
 security = HTTPBearer()
 

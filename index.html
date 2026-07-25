@@ -1055,6 +1055,7 @@
   </div>
 
   <!-- Include App Logic -->
+  <script>window.API_BASE = (function(){ var h = window.location.hostname; if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8000/api'; var v = document.currentScript && document.currentScript.getAttribute('data-api'); return v || '/api'; })();</script>
   <script src="ai.js?v=2"></script>
   <script src="app.js?v=2"></script>
 

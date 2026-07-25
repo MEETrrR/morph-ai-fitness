@@ -2,7 +2,7 @@
  * Main Application Logic - UI management, Auth, Membership, and calculations.
  */
 
-const API_BASE = 'http://localhost:8000/api';
+var API_BASE = window.API_BASE || 'http://localhost:8000/api';
 
 // Safe localStorage helper
 function safeGet(key, fallback = null) {
