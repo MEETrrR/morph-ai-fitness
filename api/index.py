@@ -12,7 +12,6 @@ from fastapi import FastAPI, HTTPException, Depends, Request, File, UploadFile, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 # --- Config ---
@@ -59,24 +58,6 @@ def filter_content(text: str) -> tuple:
     return sanitize(text, 500), False
 
 app = FastAPI(title="Morph.AI API")
-
-# Serve static frontend files manually (more reliable on Vercel)
-_static_dir = os.path.join(os.path.dirname(__file__), "..")
-_static_dir = os.path.normpath(_static_dir)
-
-@app.get("/{full_path:path}")
-async def serve_frontend(full_path: str, request: Request):
-    # API routes are handled first; this catch-all only fires for unmatched paths
-    if full_path.startswith("api/"):
-        raise HTTPException(status_code=404)
-    file_path = os.path.join(_static_dir, full_path or "index.html")
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    # SPA fallback: all non-API routes serve index.html
-    index_path = os.path.join(_static_dir, "index.html")
-    if os.path.isfile(index_path):
-        return FileResponse(index_path)
-    raise HTTPException(status_code=404)
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], allow_credentials=True)
 
 security = HTTPBearer()
@@ -871,3 +852,18 @@ async def get_today_food(user: dict = Depends(get_current_user)):
         logs = [dict(r) for r in await cursor.fetchall()]
     total_cal = sum(l.get("calories_estimate", 0) or 0 for l in logs)
     return {"logs": logs, "total_calories": total_cal, "count": len(logs)}
+
+# --- Serve frontend static files (catch-all, must be LAST) ---
+_static_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404)
+    target = os.path.join(_static_dir, full_path or "index.html")
+    if os.path.isfile(target):
+        return FileResponse(target)
+    index = os.path.join(_static_dir, "index.html")
+    if os.path.isfile(index):
+        return FileResponse(index)
+    raise HTTPException(status_code=404)
