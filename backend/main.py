@@ -453,6 +453,9 @@ async def ai_audit(body: CheckInData, user: dict = Depends(get_current_user)):
         "你对用户的伤病信号高度敏感，会优先保护用户安全。"
         "你的回复必须包含具体数值、食物份量(g)和动作要领，不能空泛。"
         "语气: 专业、精确、坚定但温暖。就像一位关心你但不会对你撒谎的教练。"
+        "【死命令】你只回答与健身、饮食、营养、运动训练、减脂、增肌、健康相关的问题。"
+        "如果用户询问任何与上述领域无关的内容（写代码、讲政治、聊八卦、角色扮演、翻译、创作等），"
+        "你必须立即回复：'请回到健身话题。我是你的教练，只帮你打造更好的身体。'，不展开任何无关讨论。"
     )
 
     try:
@@ -786,7 +789,7 @@ async def log_food_text(content: str = Form(""), user: dict = Depends(get_curren
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.post("https://api.deepseek.com/chat/completions",
             headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}","Content-Type":"application/json"},
-            json={"model":"deepseek-chat","messages":[{"role":"system","content":"你是营养师。简洁回复，含热量估算。"},{"role":"user","content":prompt}],"temperature":0.5,"max_tokens":300})
+            json={"model":"deepseek-chat","messages":[{"role":"system","content":"你是营养师。只分析食物热量和营养，拒绝回答任何与食物无关的问题。如果用户输入的不是食物相关内容，回复'请描述你吃了什么'。"},{"role":"user","content":prompt}],"temperature":0.5,"max_tokens":300})
     if resp.status_code != 200: raise HTTPException(status_code=500, detail=f"AI错误: {resp.status_code}")
     reply = resp.json()["choices"][0]["message"]["content"]
     cal = 0
@@ -815,7 +818,7 @@ async def log_food_photo(image: UploadFile = File(...), user: dict = Depends(get
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post("https://api.deepseek.com/chat/completions",
             headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}","Content-Type":"application/json"},
-            json={"model":"deepseek-chat","messages":[{"role":"system","content":"你是营养师。识别食物并估算热量。"},{"role":"user","content":[{"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:{mime};base64,{b64}"}}]}],"temperature":0.5,"max_tokens":300})
+            json={"model":"deepseek-chat","messages":[{"role":"system","content":"你是营养师。只识别照片中的食物并估算热量营养。如果照片中不是食物，回复'请拍摄食物照片'。"},{"role":"user","content":[{"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:{mime};base64,{b64}"}}]}],"temperature":0.5,"max_tokens":300})
     if resp.status_code != 200: raise HTTPException(status_code=500, detail=f"AI错误: {resp.status_code}")
     reply = resp.json()["choices"][0]["message"]["content"]
     cal = 0

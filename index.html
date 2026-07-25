@@ -156,7 +156,7 @@
           <div class="wiz-icon">🩺</div>
           <h2 class="wiz-title">伤病情况</h2>
           <p class="wiz-desc">教练需要保护你的弱点</p>
-          <input type="text" id="wizIllness" class="premium-input" placeholder="如：无 / 膝盖轻微积水 / 腰肌劳损" style="width:100%;max-width:300px;">
+          <input type="text" id="wizIllness" class="premium-input" maxlength="200" placeholder="如：无 / 膝盖轻微积水 / 腰肌劳损" style="width:100%;max-width:300px;">
           <button class="btn-skip" id="btnSkipIllness">跳过 → 无伤病</button>
         </div>
 
@@ -341,7 +341,7 @@
 
             <div class="task-notes">
               <h4>✍️ 今日备注</h4>
-              <textarea id="taskNotes" class="premium-input" placeholder="今日感受、伤病、特殊情况..." rows="3"></textarea>
+              <textarea id="taskNotes" class="premium-input" maxlength="500" placeholder="今日感受、伤病、特殊情况..." rows="3"></textarea>
             </div>
 
             <button class="btn-primary" id="btnTaskSubmit">
@@ -392,7 +392,7 @@
               </div>
               <div class="form-group">
                 <label for="ciState">状态说明 <span style="color:var(--accent-red);">*</span></label>
-                <input type="text" id="ciState" class="premium-input" placeholder="例如：刚考完试 / 沉沦了几天 / 状态爆棚" required>
+                <input type="text" id="ciState" class="premium-input" maxlength="200" placeholder="例如：刚考完试 / 沉沦了几天 / 状态爆棚" required>
               </div>
               </div>
 
@@ -401,37 +401,37 @@
                 <h4>🍱 【干饭审计日志】</h4>
                 <div class="form-group">
                   <label for="ciBreakfast">早饭/加餐吃了 <span style="color:var(--text-secondary);font-weight:400;">(选填)</span></label>
-                  <input type="text" id="ciBreakfast" class="premium-input" placeholder="例如：黑咖啡一杯 + 水煮蛋一个">
+                  <input type="text" id="ciBreakfast" class="premium-input" maxlength="200" placeholder="例如：黑咖啡一杯 + 水煮蛋一个">
                 </div>
                 <div class="form-group">
                   <label for="ciLunch">中午吃了 <span style="color:var(--accent-red);">*</span></label>
-                  <input type="text" id="ciLunch" class="premium-input" placeholder="例如：150克米饭 + 食堂青菜炒肉" required>
+                  <input type="text" id="ciLunch" class="premium-input" maxlength="200" placeholder="例如：150克米饭 + 食堂青菜炒肉" required>
                 </div>
                 <div class="form-group">
                   <label for="ciDinner">晚上计划/已经吃了 <span style="color:var(--accent-red);">*</span></label>
-                  <input type="text" id="ciDinner" class="premium-input" placeholder="例如：鸡胸肉 200g + 0碳水 / 准备吃麻辣香锅" required>
-                </div>
-              </div>
+          <input type="text" id="ciDinner" class="premium-input" maxlength="200" placeholder="例如：鸡胸肉 200g + 0碳水 / 准备吃麻辣香锅" required>
+        </div>
+      </div>
 
-              <!-- Exercise Log -->
-              <div class="checkin-section">
-                <h4>🏀 【今日运动与身体代码】</h4>
-                <div class="form-group">
-                  <label for="ciExercise">今日运动/休息项目</label>
-                  <input type="text" id="ciExercise" class="premium-input" placeholder="例如：去健身房推胸1.5小时 / 慢跑5公里 / 纯休息" required>
-                </div>
-                <div class="form-group">
-                  <label for="ciFeedback">运动与关节反馈</label>
-                  <input type="text" id="ciFeedback" class="premium-input" placeholder="例如：胸肌泵感极佳 / 膝盖微酸 / 精神状态饱满" required>
-                </div>
-              </div>
+      <!-- Exercise Log -->
+      <div class="checkin-section">
+        <h4>🏀 【今日运动与身体代码】</h4>
+        <div class="form-group">
+          <label for="ciExercise">今日运动/休息项目</label>
+          <input type="text" id="ciExercise" class="premium-input" maxlength="200" placeholder="例如：去健身房推胸1.5小时 / 慢跑5公里 / 纯休息" required>
+        </div>
+        <div class="form-group">
+          <label for="ciFeedback">运动与关节反馈</label>
+          <input type="text" id="ciFeedback" class="premium-input" maxlength="200" placeholder="例如：胸肌泵感极佳 / 膝盖微酸 / 精神状态饱满" required>
+        </div>
+      </div>
 
-              <!-- Flag / Deadlines -->
-              <div class="checkin-section">
-                <h4>🎯 【当前死线 Flag】</h4>
-                <div class="form-group">
-                  <label for="ciGoalFlag">今日终极 Flag 说明</label>
-                  <input type="text" id="ciGoalFlag" class="premium-input" placeholder="例如：7月6日前杀到 165 斤 / 9月开学出腹肌" required>
+      <!-- Flag / Deadlines -->
+      <div class="checkin-section">
+        <h4>🎯 【当前死线 Flag】</h4>
+        <div class="form-group">
+          <label for="ciGoalFlag">今日终极 Flag 说明</label>
+          <input type="text" id="ciGoalFlag" class="premium-input" maxlength="200" placeholder="例如：7月6日前杀到 165 斤 / 9月开学出腹肌" required>
                 </div>
               </div>
 
@@ -668,7 +668,7 @@
             </div>
             <div id="dietTyping" style="display:none;color:var(--text-secondary);font-size:0.8rem;padding:0.5rem;">💭 分析中...</div>
             <div style="display:flex;gap:0.5rem;align-items:flex-end;">
-              <input type="text" id="dietInput" class="premium-input" placeholder="我刚吃了..." style="flex:1;">
+              <input type="text" id="dietInput" class="premium-input" maxlength="500" placeholder="我刚吃了..." style="flex:1;">
               <label for="dietPhotoInput" style="cursor:pointer;padding:0.7rem;border-radius:12px;background:var(--panel-bg);border:1px solid var(--panel-border);">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="var(--text-secondary)"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
               </label>
@@ -856,8 +856,8 @@
         <button class="btn-icon" id="closeLoginModal" style="width:32px;height:32px;"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
       </div>
       <div class="modal-body">
-        <input type="email" id="loginEmail" class="premium-input" placeholder="输入邮箱">
-        <input type="password" id="loginPassword" class="premium-input" placeholder="输入密码">
+        <input type="email" id="loginEmail" class="premium-input" maxlength="100" placeholder="输入邮箱">
+        <input type="password" id="loginPassword" class="premium-input" maxlength="128" placeholder="输入密码">
         <div style="display:flex;gap:0.5rem;">
           <button class="btn-primary" id="loginSubmitBtn" style="flex:1;">登录</button>
           <button class="btn-secondary" id="loginRegisterBtn" style="flex:1;">注册</button>
@@ -883,8 +883,8 @@
         <div class="member-section">
           <div id="authBlock" style="display: flex; flex-direction: column; gap: 0.75rem;">
             <h4 style="font-size: 0.9rem; font-weight: 700;">👤 账号登录</h4>
-            <input type="email" id="setEmail" class="premium-input" placeholder="输入邮箱">
-            <input type="password" id="setPassword" class="premium-input" placeholder="输入密码">
+            <input type="email" id="setEmail" class="premium-input" maxlength="100" placeholder="输入邮箱">
+            <input type="password" id="setPassword" class="premium-input" maxlength="128" placeholder="输入密码">
             <div style="display: flex; gap: 0.5rem;">
               <button class="btn-primary" id="loginBtn" style="flex: 1; font-size: 0.85rem;">登录</button>
               <button class="btn-secondary" id="registerBtn" style="flex: 1; font-size: 0.85rem;">注册</button>
@@ -941,7 +941,7 @@
 
         <div class="form-group">
           <label for="setIllnesses">疾病与损伤情况</label>
-          <input type="text" id="setIllnesses" class="premium-input">
+          <input type="text" id="setIllnesses" class="premium-input" maxlength="200">
         </div>
 
         <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
