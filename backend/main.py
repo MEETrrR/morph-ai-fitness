@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from collections import defaultdict
 
-import aiosqlite, httpx
+import aiosqlite, httpx, jwt as pyjwt
 from fastapi import FastAPI, HTTPException, Depends, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -15,10 +15,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 
 # --- Config ---
-SECRET_KEY = os.environ.get("SECRET_KEY")
-if not SECRET_KEY:
-    raise RuntimeError("FATAL: SECRET_KEY environment variable must be set. Generate with: python -c 'import secrets; print(secrets.token_hex(32))'")
-SECRET_KEY = SECRET_KEY.encode()
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+if not SUPABASE_JWT_SECRET:
+    SUPABASE_JWT_SECRET = os.environ.get("SECRET_KEY", "")
+    if not SUPABASE_JWT_SECRET:
+        raise RuntimeError("FATAL: SUPABASE_JWT_SECRET (or SECRET_KEY) must be set")
+SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET.encode()
+SECRET_KEY = SUPABASE_JWT_SECRET  # Backward compat for PUSH_SECRET derivation
 TOKEN_EXPIRE_DAYS = 30
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:8080")
@@ -161,8 +165,9 @@ async def get_db():
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     await db.execute("""
-        CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL,
-        phone TEXT DEFAULT '', password_hash TEXT NOT NULL, is_trial INTEGER DEFAULT 1, trial_ends_at TEXT,
+        CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supabase_uid TEXT UNIQUE, email TEXT DEFAULT '', phone TEXT DEFAULT '',
+        password_hash TEXT DEFAULT '', is_trial INTEGER DEFAULT 1, trial_ends_at TEXT,
         membership_expires_at TEXT, reset_token TEXT DEFAULT '', reset_token_expires TEXT DEFAULT '',
         created_at TEXT DEFAULT (datetime('now')))
     """)
@@ -229,48 +234,49 @@ async def get_db():
     await db.commit()
     return db
 
-# --- Token Helpers ---
-def _b64_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-def _b64_decode(s: str) -> bytes:
-    s += "=" * (4 - len(s) % 4)
-    return base64.urlsafe_b64decode(s)
-
-def create_token(user_id: int, email: str) -> str:
-    header = _b64_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    payload = _b64_encode(json.dumps({"sub": str(user_id), "email": email, "exp": int(time.time() + TOKEN_EXPIRE_DAYS * 86400)}).encode())
-    sig = _b64_encode(hmac.new(SECRET_KEY, f"{header}.{payload}".encode(), hashlib.sha256).digest())
-    return f"{header}.{payload}.{sig}"
-
-def decode_token(token: str) -> dict:
-    parts = token.split(".")
-    if len(parts) != 3: raise ValueError("invalid token")
-    header_b64, payload_b64, sig = parts
-    header_data = json.loads(_b64_decode(header_b64))
-    if header_data.get("alg") != "HS256":
-        raise ValueError("unsupported algorithm")
-    expected = _b64_encode(hmac.new(SECRET_KEY, f"{header_b64}.{payload_b64}".encode(), hashlib.sha256).digest())
-    if not hmac.compare_digest(sig, expected): raise ValueError("invalid signature")
-    data = json.loads(_b64_decode(payload_b64))
-    if data.get("exp", 0) < time.time(): raise ValueError("token expired")
-    return data
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = decode_token(credentials.credentials)
-        user_id = int(payload.get("sub"))
-    except (ValueError, TypeError, KeyError):
-        raise HTTPException(status_code=401, detail="无效的登录凭证")
+# --- Supabase Auth (JWT verification) ---
+async def get_or_create_user(supabase_uid: str, email: str = "") -> dict:
+    """Find existing local user by supabase_uid, or create one."""
     db = await get_db()
-    async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor:
+    async with db.execute("SELECT * FROM users WHERE supabase_uid = ?", (supabase_uid,)) as cursor:
         user = await cursor.fetchone()
-    if not user: raise HTTPException(status_code=401, detail="用户不存在")
+    if not user:
+        cursor = await db.execute(
+            "INSERT INTO users (supabase_uid, email, is_trial, trial_ends_at) VALUES (?, ?, 1, ?)",
+            (supabase_uid, email, (datetime.now(timezone.utc) + timedelta(days=9999)).isoformat()))
+        await db.commit()
+        user_id = cursor.lastrowid
+        await create_user_profile(db, user_id)
+        async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor2:
+            user = await cursor2.fetchone()
     return dict(user)
 
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = pyjwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"],
+                               options={"verify_aud": False, "verify_exp": True})
+        supabase_uid = payload.get("sub")
+        email = payload.get("email", "")
+        if not supabase_uid:
+            raise HTTPException(status_code=401, detail="无效的登录凭证")
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="无效的登录凭证")
+    return await get_or_create_user(supabase_uid, email)
+
 def check_membership(user: dict) -> bool:
-    # FREE BETA: all authenticated users can use AI features
-    return True
+    return True  # FREE BETA
+
+def check_rate_limit(user_id, limit: int = AI_DAILY_LIMIT):
+    now = time.time()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"{user_id}:{today}"
+    _rate_limits[key] = [t for t in _rate_limits[key] if now - t < 86400]
+    if len(_rate_limits[key]) >= limit:
+        raise HTTPException(status_code=429, detail=f"今日AI审计次数已达上限({limit}次/天)，请明天再来")
+    _rate_limits[key].append(now)
 
 # --- Routes ---
 @app.get("/api/health")

@@ -29,10 +29,29 @@ function sanitizeHTML(str) {
 document.addEventListener('DOMContentLoaded', () => {
   // --- STATE MANAGEMENT ---
   gameState = safeGet("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
-  let profile = safeGet('ai_fitness_profile');
-  let history = safeGet('ai_fitness_history') || [];
-  let authToken = safeGet('ai_fitness_token', null);
-  let currentUser = safeGet('ai_fitness_user', null);
+  var profile = safeGet('ai_fitness_profile');
+  var history = safeGet('ai_fitness_history') || [];
+  var authToken = null;
+  var currentUser = null;
+  var supabaseClient = window._supabase || null;
+
+  // Restore Supabase session
+  (async function restoreSession() {
+    if (supabaseClient) {
+      var { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        authToken = session.access_token;
+        currentUser = session.user;
+        updateAuthUI();
+      }
+    }
+    // Fallback: try legacy localStorage token
+    if (!authToken) {
+      authToken = safeGet('ai_fitness_token', null);
+      currentUser = safeGet('ai_fitness_user', null);
+    }
+    initApp();
+  })();
   const TOTAL_STEPS = 9;
   let wizStep = 0;
   let wizData = { gender: 'male', age: 21, height: 175, weight: 70, targetWeight: 65, goal: 'fat_loss', deadline: null, illness: '无' };
@@ -157,12 +176,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnTaskSubmit = document.getElementById('btnTaskSubmit');
 
   // --- INITIALIZATION ---
-  initApp();
+  // initApp() is called from restoreSession above
 
   function initApp() {
     var ls = document.getElementById('loadingScreen');
     themeToggle.style.display = 'none';
     updateMembershipUI();
+    updateAuthUI();
     if (profile && onboardingView && mainAppView) {
       if (ls) { ls.style.display = 'none'; }
       var ctn = document.querySelector('.container'); if (ctn && ctn.parentNode) ctn.parentNode.removeChild(ctn);
@@ -242,75 +262,84 @@ document.addEventListener('DOMContentLoaded', () => {
     return res.json();
   }
 
+  function updateAuthUI() {
+    updateMembershipUI();
+    updateSettingsAuthUI();
+    var headerBtn = document.getElementById('headerLoginBtn');
+    if (headerBtn) {
+      if (authToken) {
+        headerBtn.textContent = currentUser?.email ? currentUser.email.split('@')[0] : '已登录';
+        headerBtn.style.background = 'var(--green-check)';
+      } else {
+        headerBtn.textContent = '登录 / 注册';
+        headerBtn.style.background = 'var(--red-ink)';
+      }
+    }
+  }
+
+  async function supabaseLogin(email, password, isRegister) {
+    if (!supabaseClient) { authMsg.innerText = 'Supabase 未配置'; return; }
+    var result;
+    if (isRegister) {
+      result = await supabaseClient.auth.signUp({ email: email, password: password });
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data.session) { authMsg.innerText = '注册成功！请检查邮箱验证链接（如果开启了邮箱验证）'; return; }
+    } else {
+      result = await supabaseClient.auth.signInWithPassword({ email: email, password: password });
+      if (result.error) throw new Error(result.error.message);
+    }
+    authToken = result.data.session.access_token;
+    currentUser = result.data.session.user;
+    safeSet('ai_fitness_token', authToken);
+    safeSet('ai_fitness_user', currentUser);
+    authMsg.innerText = '';
+    showToast(isRegister ? '注册成功！欢迎加入内测' : '登录成功！', 'success');
+    updateAuthUI();
+    if (!isRegister) syncHistoryFromCloud();
+    if (typeof initApp === 'function') initApp();
+  }
+
   loginBtn.addEventListener('click', async () => {
-    const email = setEmail.value.trim();
-    const password = setPassword.value.trim();
+    var email = setEmail.value.trim();
+    var password = setPassword.value.trim();
     if (!email || !password) { authMsg.innerText = '请填写邮箱和密码'; return; }
     authMsg.innerText = '登录中...';
-    try {
-      const data = await apiCall('/auth/login', 'POST', { email, password });
-      authToken = data.access_token;
-      currentUser = data.user;
-      localStorage.setItem('ai_fitness_token', authToken);
-      localStorage.setItem('ai_fitness_user', JSON.stringify(currentUser));
-      authMsg.innerText = '';
-      showToast('登录成功！', 'success');
-      updateMembershipUI();
-      updateSettingsAuthUI();
-      syncHistoryFromCloud();
-    } catch (e) { authMsg.innerText = e.message; }
+    try { await supabaseLogin(email, password, false); } catch (e) { authMsg.innerText = e.message; }
   });
 
   registerBtn.addEventListener('click', async () => {
-    const email = setEmail.value.trim();
-    const password = setPassword.value.trim();
+    var email = setEmail.value.trim();
+    var password = setPassword.value.trim();
     if (!email || !password) { authMsg.innerText = '请填写邮箱和密码'; return; }
     if (password.length < 8) { authMsg.innerText = '密码至少8位，需包含大小写字母和数字'; return; }
     authMsg.innerText = '注册中...';
-    try {
-      const data = await apiCall('/auth/register', 'POST', { email, password });
-      authToken = data.access_token;
-      currentUser = data.user;
-      localStorage.setItem('ai_fitness_token', authToken);
-      localStorage.setItem('ai_fitness_user', JSON.stringify(currentUser));
-      authMsg.innerText = '';
-      showToast('注册成功！欢迎加入内测', 'success');
-      updateMembershipUI();
-      updateSettingsAuthUI();
-    } catch (e) { authMsg.innerText = e.message; }
+    try { await supabaseLogin(email, password, true); } catch (e) { authMsg.innerText = e.message; }
   });
 
-  logoutBtn.addEventListener('click', () => {
+  logoutBtn.addEventListener('click', async () => {
+    if (supabaseClient) { await supabaseClient.auth.signOut(); }
     safeRemove('ai_fitness_token');
     safeRemove('ai_fitness_user');
     authToken = null;
     currentUser = null;
     showToast('已退出登录', 'info');
-    updateMembershipUI();
-    updateSettingsAuthUI();
+    updateAuthUI();
   });
 
-  const forgotPwBtn = document.getElementById('forgotPwBtn');
+  var forgotPwBtn = document.getElementById('forgotPwBtn');
   if (forgotPwBtn) forgotPwBtn.addEventListener('click', async () => {
-    const email = setEmail.value.trim();
+    var email = setEmail.value.trim();
     if (!email) { authMsg.innerText = '请先输入邮箱'; return; }
+    if (!supabaseClient) { authMsg.innerText = 'Supabase 未配置'; return; }
     try {
-      const data = await apiCall('/auth/reset-password', 'POST', { email, password: '' });
-      if (data.reset_link) {
-        var np = prompt('重置链接: ' + data.reset_link + '\n\n输入新密码(至少8位):');
-        if (np && np.length >= 8) {
-          await apiCall('/auth/reset-password/confirm', 'POST', { token: data.reset_link.split('token=')[1], new_password: np });
-          authMsg.innerText = '密码已重置，请用新密码登录';
-        }
-      } else {
-        authMsg.innerText = data.message || '重置失败';
-      }
+      var { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+      authMsg.innerText = error ? error.message : '重置链接已发送到你的邮箱';
     } catch (e) { authMsg.innerText = e.message; }
   });
 
-  const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+  var deleteAccountBtn = document.getElementById('deleteAccountBtn');
   if (deleteAccountBtn) deleteAccountBtn.addEventListener('click', async () => {
-    if (!confirm('⚠️ 确定要永久删除你的账户和所有数据吗？此操作不可恢复！')) return;
+    if (!confirm('确定要永久删除你的账户和所有数据吗？此操作不可恢复！')) return;
     if (!confirm('再次确认：所有打卡记录和身体数据将被永久删除。')) return;
     try {
       await apiCall('/auth/delete-account', 'DELETE');
@@ -1691,9 +1720,9 @@ function renderActions(group) {
   window._openLogin = function() { var m = document.getElementById("loginModal"); if (m) m.classList.add("active"); };
   var headerLoginBtn = document.getElementById("headerLoginBtn"); if (headerLoginBtn) headerLoginBtn.addEventListener("click", function() { window._openLogin(); });
   var closeLogin = document.getElementById("closeLoginModal"); if (closeLogin) closeLogin.addEventListener("click", function() { document.getElementById("loginModal").classList.remove("active"); });
-  var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
-  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 8) { msg.innerText = "请填写邮箱和密码(至少8位)"; return; } msg.innerText = "注册中..."; try { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！欢迎加入内测","success"); updateMembershipUI(); updateSettingsAuthUI(); } catch(e) { msg.innerText = e.message; } });
-  var btnLF = document.getElementById("loginForgotBtn"); if (btnLF) btnLF.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var msg = document.getElementById("loginMsg"); if (!email) { msg.innerText = "请先输入邮箱"; return; } try { var d = await apiCall("/auth/reset-password", "POST", { email:email, password:"" }); msg.innerText = d.message || "重置邮件已发送"; } catch(e) { msg.innerText = e.message; } });
+  var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var result = supabaseClient ? await supabaseClient.auth.signInWithPassword({ email: email, password: pw }) : null; if (result && result.error) throw new Error(result.error.message); if (result) { authToken = result.data.session.access_token; currentUser = result.data.session.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); } else { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); } msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); updateAuthUI(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
+  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 8) { msg.innerText = "请填写邮箱和密码(至少8位)"; return; } msg.innerText = "注册中..."; try { var result = supabaseClient ? await supabaseClient.auth.signUp({ email: email, password: pw }) : null; if (result && result.error) throw new Error(result.error.message); if (result && result.data.session) { authToken = result.data.session.access_token; currentUser = result.data.session.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); } else if (!result) { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); } msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！欢迎加入内测","success"); updateMembershipUI(); updateSettingsAuthUI(); updateAuthUI(); } catch(e) { msg.innerText = e.message; } });
+  var btnLF = document.getElementById("loginForgotBtn"); if (btnLF) btnLF.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var msg = document.getElementById("loginMsg"); if (!email) { msg.innerText = "请先输入邮箱"; return; } if (supabaseClient) { try { await supabaseClient.auth.resetPasswordForEmail(email); msg.innerText = "重置链接已发送到你的邮箱"; } catch(e) { msg.innerText = e.message; } } else { try { var d = await apiCall("/auth/reset-password", "POST", { email:email, password:"" }); msg.innerText = d.message || "重置邮件已发送"; } catch(e) { msg.innerText = e.message; } } });
 
   // SCENARIO
   var scenarioView = document.getElementById("scenarioView"); var selectedScene = "home_student";
