@@ -30,3 +30,4 @@ full.html
 # Temp/reset files
 reset-local.html
 .superpowers/
+backend/main.py.bak
