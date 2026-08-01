@@ -18,7 +18,7 @@
       document.body.innerHTML = '<div style="color:red;padding:2rem;font-size:1.2rem;"><h2>JS Error</h2><p>'+safeMsg.innerHTML+'</p><p>Line: '+line+'</p></div>';
     };
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js');
+      navigator.serviceWorker.register('./sw.js').catch(function(){});
     }
   </script>
 </head>
