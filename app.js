@@ -530,6 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wizStep === 4) makePicker(document.querySelector("#picker4 .scroll-picker-list"), 30, 200, 0.5, wizData.targetWeight);
 
     if (wizStep === 8) {
+      readAllPickers();
       const gText = wizData.gender === "male" ? "男" : "女";
       const goalText = wizData.goal === "fat_loss" ? "🔥 无情减脂" : "💪 硬核增肌";
       const dlText = wizData.deadline || "长期战役";
@@ -545,11 +546,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  btnWizNext.addEventListener("click", () => {
+  function readAllPickers() {
     const l1 = document.querySelector("#picker1 .scroll-picker-list"); if (l1) { const v = readPickerValue(l1); if (v) wizData.age = v; }
     const l2 = document.querySelector("#picker2 .scroll-picker-list"); if (l2) { const v = readPickerValue(l2); if (v) wizData.height = v; }
     const l3 = document.querySelector("#picker3 .scroll-picker-list"); if (l3) { const v = readPickerValue(l3); if (v) wizData.weight = v; }
     const l4 = document.querySelector("#picker4 .scroll-picker-list"); if (l4) { const v = readPickerValue(l4); if (v) wizData.targetWeight = v; }
+  }
+
+  btnWizNext.addEventListener("click", () => {
+    readAllPickers();
     if (wizStep >= TOTAL_STEPS - 1) return;
     wizStep++;
     updateWizard();
@@ -583,6 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnSkipIllness) btnSkipIllness.addEventListener("click", () => { wizData.illness = "无"; wizStep++; updateWizard(); });
 
   btnWizStart.addEventListener("click", () => {
+    readAllPickers();
     if (wizDeadline && wizDeadline.value) wizData.deadline = wizDeadline.value;
     if (wizIllness && wizIllness.value.trim()) wizData.illness = wizIllness.value.trim();
     profile = { gender: wizData.gender, age: wizData.age, height: wizData.height, weight: wizData.weight, targetWeight: wizData.targetWeight, deadlineDate: wizData.deadline || null, goal: wizData.goal, illnesses: wizData.illness };
