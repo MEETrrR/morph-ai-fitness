@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>清除缓存</title></head>
+<body style="background:#0f0f11;color:white;text-align:center;padding-top:40vh;font-family:sans-serif;">
+<h2>🧹 清理中...</h2><p id="msg"></p>
+<script>
+(async()=>{
+document.getElementById('msg').innerText='卸载旧SW...';
+if('serviceWorker' in navigator){const rs=await navigator.serviceWorker.getRegistrations();for(const r of rs)await r.unregister();}
+document.getElementById('msg').innerText='清除缓存...';
+const ks=await caches.keys();for(const k of ks)await caches.delete(k);
+document.getElementById('msg').innerText='✅ 完成！跳转...';
+setTimeout(()=>{location.href='/';},500);
+})();
+</script>
+</body></html>

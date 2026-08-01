@@ -1,0 +1,206 @@
+﻿  // --- ONBOARDING WIZARD ---
+  let wizStep = 0;
+  const TOTAL_STEPS = 9;
+  let wizData = { gender: 'male', age: 21, height: 175, weight: 70, targetWeight: 65, goal: 'fat_loss', deadline: null, illness: '鏃? };
+
+  // Dots
+  for (let i = 0; i < TOTAL_STEPS; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'wiz-dot';
+    dot.dataset.dot = i;
+    wizDots.appendChild(dot);
+  }
+
+  function initScrollPickers() {
+    document.querySelectorAll('.scroll-picker').forEach(sp => {
+      const list = sp.querySelector('.scroll-picker-list');
+      const id = sp.dataset.id;
+      const min = parseFloat(sp.dataset.min);
+      const max = parseFloat(sp.dataset.max);
+      const step = parseFloat(sp.dataset.step || 1);
+      const def = parseFloat(sp.dataset.default);
+
+      list.innerHTML = '';
+      // Add padding items at top
+      for (let j = 0; j < 3; j++) list.appendChild(createPickerItem(null));
+      for (let v = min; v <= max; v += step) {
+        const item = createPickerItem(parseFloat(v.toFixed(1)));
+        list.appendChild(item);
+      }
+      for (let j = 0; j < 3; j++) list.appendChild(createPickerItem(null));
+
+      // Scroll to default
+      const items = list.querySelectorAll('.picker-item[data-value]');
+      const defaultIdx = Math.round((def - min) / step);
+      const target = items[defaultIdx];
+      if (target) {
+        setTimeout(() => {
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          highlightSelected(list);
+        }, 100);
+      }
+
+      list.parentElement.addEventListener('scroll', () => highlightSelected(list), { passive: true });
+
+      // Store reference
+      sp._updateValue = () => {
+        const sel = list.querySelector('.picker-item.selected');
+        if (sel && sel.dataset.value !== undefined) {
+          const val = parseFloat(sel.dataset.value);
+          if (id === 'obAge') wizData.age = val;
+          else if (id === 'obHeight') wizData.height = val;
+          else if (id === 'obWeight') wizData.weight = val;
+          else if (id === 'obTargetWeight') wizData.targetWeight = val;
+        }
+      };
+    });
+  }
+
+  function createPickerItem(value) {
+    const div = document.createElement('div');
+    div.className = 'picker-item';
+    if (value !== null && value !== undefined) {
+      div.dataset.value = value;
+      div.textContent = value;
+    }
+    return div;
+  }
+
+  function highlightSelected(list) {
+    const rect = list.parentElement.getBoundingClientRect();
+    const center = rect.top + rect.height / 2;
+    let closest = null, minDist = Infinity;
+    list.querySelectorAll('.picker-item[data-value]').forEach(item => {
+      item.classList.remove('selected');
+      const itemRect = item.getBoundingClientRect();
+      const itemCenter = itemRect.top + itemRect.height / 2;
+      const dist = Math.abs(itemCenter - center);
+      if (dist < minDist) { minDist = dist; closest = item; }
+    });
+    if (closest) closest.classList.add('selected');
+  }
+
+  function updateWizard() {
+    console.log('updateWizard step:', wizStep);
+    try {
+    const pct = Math.round((wizStep / (TOTAL_STEPS - 1)) * 100);
+    wizProgressFill.style.width = pct + '%';
+    wizStepLabel.innerText = `${wizStep + 1}/${TOTAL_STEPS}`;
+
+    // Dots
+    document.querySelectorAll('.wiz-dot').forEach((dot, i) => {
+      dot.classList.remove('done', 'current');
+      if (i < wizStep) dot.classList.add('done');
+      if (i === wizStep) dot.classList.add('current');
+    });
+
+    // Panels
+    document.querySelectorAll('.wiz-panel').forEach((p, i) => {
+      p.classList.toggle('active', i === wizStep);
+    });
+
+    // Nav buttons
+    btnWizBack.disabled = wizStep === 0;
+    if (wizStep >= TOTAL_STEPS - 1) {
+      btnWizNext.style.display = 'none';
+      btnWizBack.style.display = 'none';
+    } else {
+      btnWizNext.style.display = '';
+      btnWizBack.style.display = '';
+    }
+
+    // Step 0 init pickers
+    if (wizStep === 1 || wizStep === 2 || wizStep === 3 || wizStep === 4) {
+      initScrollPickers();
+    }
+
+    // Step 8: build summary
+    if (wizStep === 8) {
+      const gText = wizData.gender === 'male' ? '鐢? : '濂?;
+      const goalText = wizData.goal === 'fat_loss' ? '馃敟 鏃犳儏鍑忚剛' : '馃挭 纭牳澧炶倢';
+      const dlText = wizData.deadline || '闀挎湡鎴樺焦';
+      wizSummary.innerHTML = `
+        <div><span>鎬у埆</span>銆€${gText}</div>
+        <div><span>骞撮緞</span>銆€${wizData.age} 宀?/div>
+        <div><span>韬珮</span>銆€${wizData.height} cm</div>
+        <div><span>褰撳墠浣撻噸</span>銆€${wizData.weight} kg</div>
+        <div><span>鐩爣浣撻噸</span>銆€${wizData.targetWeight} kg</div>
+        <div><span>鏍稿績鐩爣</span>銆€${goalText}</div>
+        <div><span>姝荤嚎鏃ユ湡</span>銆€${dlText}</div>
+        <div><span>浼ょ梾鎯呭喌</span>銆€${wizData.illness}</div>
+      `;
+    }
+    } catch(e) { console.error('updateWizard error:', e); }
+  }
+
+  btnWizNext.addEventListener('click', () => {
+    // Save current step data
+    document.querySelectorAll('.scroll-picker').forEach(sp => { if (sp._updateValue) sp._updateValue(); });
+    if (wizStep >= TOTAL_STEPS - 1) return;
+    wizStep++;
+    updateWizard();
+  });
+
+  btnWizBack.addEventListener('click', () => {
+    if (wizStep <= 0) return;
+    wizStep--;
+    updateWizard();
+  });
+
+  // Gender selection
+  document.querySelectorAll('.gender-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.gender-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      wizData.gender = card.dataset.gender;
+    });
+  });
+
+  // Goal selection
+  document.querySelectorAll('.goal-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.goal-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      wizData.goal = card.dataset.goal;
+    });
+  });
+
+  // Deadline
+  if (wizDeadline) wizDeadline.addEventListener('change', () => { wizData.deadline = wizDeadline.value; });
+  if (btnSkipDeadline) btnSkipDeadline.addEventListener('click', () => {
+    wizData.deadline = null;
+    wizDeadline.value = '';
+    wizStep++; updateWizard();
+  });
+
+  // Illness
+  if (wizIllness) wizIllness.addEventListener('input', () => { wizData.illness = wizIllness.value.trim() || '鏃?; });
+  if (btnSkipIllness) btnSkipIllness.addEventListener('click', () => {
+    wizData.illness = '鏃?;
+    wizStep++; updateWizard();
+  });
+
+  // Start button
+  btnWizStart.addEventListener('click', () => {
+    document.querySelectorAll('.scroll-picker').forEach(sp => { if (sp._updateValue) sp._updateValue(); });
+    if (wizDeadline && wizDeadline.value) wizData.deadline = wizDeadline.value;
+    if (wizIllness && wizIllness.value.trim()) wizData.illness = wizIllness.value.trim();
+
+    profile = {
+      gender: wizData.gender,
+      age: wizData.age,
+      height: wizData.height,
+      weight: wizData.weight,
+      targetWeight: wizData.targetWeight,
+      deadlineDate: wizData.deadline || null,
+      goal: wizData.goal,
+      illnesses: wizData.illness
+    };
+
+    localStorage.setItem('ai_fitness_profile', JSON.stringify(profile));
+    showToast('杩愬姩搴曞骇鍔犺浇瀹屾垚锛佹暀缁冩寚浠ゆ縺娲汇€?, 'success');
+    initApp();
+  });
+
+  updateWizard();
+

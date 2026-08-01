@@ -2,7 +2,7 @@
  * Main Application Logic - UI management, Auth, Membership, and calculations.
  */
 
-var API_BASE = window.API_BASE || 'http://localhost:8000/api';
+const API_BASE = 'http://localhost:8000/api';
 
 // Safe localStorage helper
 function safeGet(key, fallback = null) {
@@ -15,9 +15,6 @@ function safeRemove(key) {
   try { localStorage.removeItem(key); } catch (e) {}
 }
 
-// Game state - initialized early for all modules
-var gameState = safeGet("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
-
 // HTML sanitizer for safe innerHTML
 function sanitizeHTML(str) {
   if (!str) return '';
@@ -27,31 +24,15 @@ function sanitizeHTML(str) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    // IMMEDIATE VISIBLE TEST
+    var __test = document.getElementById('loadingScreen');
+    if (__test) { __test.textContent = 'STEP1 OK'; __test.style.display = ''; }
   // --- STATE MANAGEMENT ---
-  gameState = safeGet("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
-  var profile = safeGet('ai_fitness_profile');
-  var history = safeGet('ai_fitness_history') || [];
-  var authToken = null;
-  var currentUser = null;
-  var supabaseClient = window._supabase || null;
-
-  // Restore Supabase session
-  (async function restoreSession() {
-    if (supabaseClient) {
-      var { data: { session } } = await supabaseClient.auth.getSession();
-      if (session) {
-        authToken = session.access_token;
-        currentUser = session.user;
-        updateAuthUI();
-      }
-    }
-    // Fallback: try legacy localStorage token
-    if (!authToken) {
-      authToken = safeGet('ai_fitness_token', null);
-      currentUser = safeGet('ai_fitness_user', null);
-    }
-    initApp();
-  })();
+  let profile = safeGet('ai_fitness_profile');
+  let history = safeGet('ai_fitness_history') || [];
+  let authToken = safeGet('ai_fitness_token', null);
+  let currentUser = safeGet('ai_fitness_user', null);
   const TOTAL_STEPS = 9;
   let wizStep = 0;
   let wizData = { gender: 'male', age: 21, height: 175, weight: 70, targetWeight: 65, goal: 'fat_loss', deadline: null, illness: '无' };
@@ -166,42 +147,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const actionsGrid = document.getElementById('actionsGrid');
   const actionsSubtabs = document.getElementById('actionsSubtabs');
 
-  // Task list elements
-  const taskDate = document.getElementById('taskDate');
-  const taskStreak = document.getElementById('taskStreak');
-  const taskProgressFill = document.getElementById('taskProgressFill');
-  const taskProgressPct = document.getElementById('taskProgressPct');
-  const taskProgressNum = document.getElementById('taskProgressNum');
-  const taskGroups = document.getElementById('taskGroups');
-  const taskNotes = document.getElementById('taskNotes');
-  const btnTaskSubmit = document.getElementById('btnTaskSubmit');
-
   // --- INITIALIZATION ---
-  // initApp() is called from restoreSession above
+  initApp();
 
   function initApp() {
     var ls = document.getElementById('loadingScreen');
-    themeToggle.style.display = 'none';
+    document.documentElement.setAttribute('data-theme', safeGet('ai_fitness_theme') || 'light');
     updateMembershipUI();
-    updateAuthUI();
     if (profile && onboardingView && mainAppView) {
-      if (ls) { ls.style.display = 'none'; }
-      var ctn = document.querySelector('.container'); if (ctn && ctn.parentNode) ctn.parentNode.removeChild(ctn);
-      var ftr = document.querySelector('footer'); if (ftr && ftr.parentNode) ftr.parentNode.removeChild(ftr);
-      document.body.appendChild(mainAppView);
-      document.body.style.cssText = 'margin:0;padding:0;';
-      mainAppView.style.cssText = 'display:flex;flex-direction:column;gap:1.25rem;max-width:720px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 5rem;min-height:100vh;box-sizing:border-box;';
+      if (ls) ls.style.display = 'none';
+      onboardingView.style.display = 'none';
+      mainAppView.style.display = 'flex';
       setupSidebar();
       generateDynamicPlan();
-      renderTaskList();
       renderHistoryList();
-      if (!safeGet('guide_done')) { setTimeout(function() { startGuide(); }, 800); }
       var lastWeight = history.length > 0 ? history[0].weight : profile.weight;
       if (ciWeight) ciWeight.value = lastWeight;
       var deadlineStr = profile.deadlineDate ? ('在 ' + profile.deadlineDate + ' 前') : '';
       var goalName = profile.goal === 'fat_loss' ? '减脂' : '增肌';
       if (ciGoalFlag) ciGoalFlag.value = deadlineStr + '杀到 ' + profile.targetWeight + ' kg | 强化' + goalName + '目标';
-      updateStatusBar();
     } else if (onboardingView && mainAppView) {
       if (ls) ls.style.display = 'none';
       onboardingView.style.display = '';
@@ -210,22 +174,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function updateStatusBar() {
-    if (!profile) return;
-    var ptw = document.getElementById('pillWeight');
-    if (ptw && profile.weight) ptw.textContent = profile.weight + ' kg';
-    var dl = document.getElementById('deadlineDays');
-    if (dl && profile.deadlineDate) {
-      var rem = Math.ceil((new Date(profile.deadlineDate) - new Date()) / 86400000);
-      dl.textContent = Math.max(0, rem) + ' 天';
-    }
-  }
-
   // --- AUTH & MEMBERSHIP ---
   function updateMembershipUI() {
     if (!membershipCard || !memberStatusLabel || !memberExpireText) return;
-    memberStatusLabel.innerText = authToken ? '🎉 免费内测中' : '未登录';
-    memberExpireText.innerText = '';
+    if (authToken && currentUser) {
+      const now = Date.now();
+      const expired = currentUser.membership_expires_at ? new Date(currentUser.membership_expires_at).getTime() : 0;
+      if (expired > now) {
+        memberStatusLabel.innerText = '👑 付费会员';
+        const days = Math.ceil((expired - now) / 86400000);
+        memberExpireText.innerText = `剩余 ${days} 天`;
+        membershipCard.style.border = '1px solid rgba(255,149,0,0.4)';
+      } else {
+        memberStatusLabel.innerText = '免费试用';
+        memberExpireText.innerText = currentUser.is_trial ? '试用已过期，请升级' : '请升级会员';
+      }
+    } else {
+      memberStatusLabel.innerText = '未登录';
+      memberExpireText.innerText = '登录后解锁AI功能';
+    }
   }
 
   function updateSettingsAuthUI() {
@@ -233,8 +200,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (authToken && currentUser) {
       authBlock.style.display = 'none';
       memberBlock.style.display = 'flex';
-      memberPlanName.innerText = '🎉 免费内测中';
-      memberPlanDesc.innerText = '所有功能免费开放';
+      const now = Date.now();
+      const expired = currentUser.membership_expires_at ? new Date(currentUser.membership_expires_at).getTime() : 0;
+      if (expired > now) {
+        memberPlanName.innerText = '👑 付费会员';
+        memberPlanDesc.innerText = `有效期至 ${new Date(expired).toLocaleDateString('zh-CN')}`;
+      } else {
+        memberPlanName.innerText = '免费试用';
+        const trialEnd = currentUser.trial_ends_at ? new Date(currentUser.trial_ends_at).getTime() : 0;
+        const remaining = Math.max(0, Math.ceil((trialEnd - now) / 86400000));
+        memberPlanDesc.innerText = `剩余 ${remaining} 天试用期`;
+      }
     } else {
       authBlock.style.display = 'flex';
       memberBlock.style.display = 'none';
@@ -246,129 +222,85 @@ document.addEventListener('DOMContentLoaded', () => {
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
     const opts = { method, headers };
     if (body) opts.body = JSON.stringify(body);
-    try {
-      const res = await fetch(`${API_BASE}${endpoint}`, opts);
-      if (res.status === 401) {
-        localStorage.removeItem('ai_fitness_token');
-        localStorage.removeItem('ai_fitness_user');
-        authToken = null;
-        currentUser = null;
-        updateMembershipUI();
-        updateSettingsAuthUI();
-        throw new Error('登录已过期，请重新登录');
-      }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `请求失败: ${res.status}`);
-      }
-      return res.json();
-    } catch (e) {
-      if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-        throw new Error('后端服务未启动，请稍后重试');
-      }
-      throw e;
+    const res = await fetch(`${API_BASE}${endpoint}`, opts);
+    if (res.status === 401) {
+      localStorage.removeItem('ai_fitness_token');
+      localStorage.removeItem('ai_fitness_user');
+      authToken = null;
+      currentUser = null;
+      updateMembershipUI();
+      updateSettingsAuthUI();
+      throw new Error('登录已过期，请重新登录');
     }
-  }
-
-  function updateAuthUI() {
-    updateMembershipUI();
-    updateSettingsAuthUI();
-    var headerBtn = document.getElementById('headerLoginBtn');
-    if (headerBtn) {
-      if (authToken) {
-        headerBtn.textContent = currentUser?.email ? currentUser.email.split('@')[0] : '已登录';
-        headerBtn.style.background = 'var(--green-check)';
-      } else {
-        headerBtn.textContent = '登录 / 注册';
-        headerBtn.style.background = 'var(--red-ink)';
-      }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `请求失败: ${res.status}`);
     }
-  }
-
-  async function supabaseLogin(email, password, isRegister) {
-    if (!supabaseClient) { authMsg.innerText = 'Supabase 未配置'; return; }
-    var result;
-    if (isRegister) {
-      result = await supabaseClient.auth.signUp({ email: email, password: password });
-      if (result.error) throw new Error(result.error.message);
-      if (!result.data.session) {
-        // Email confirmation required - show friendly message
-        showEmailConfirmModal(email);
-        return;
-      }
-    } else {
-      result = await supabaseClient.auth.signInWithPassword({ email: email, password: password });
-      if (result.error) throw new Error(result.error.message);
-    }
-    authToken = result.data.session.access_token;
-    currentUser = result.data.session.user;
-    safeSet('ai_fitness_token', authToken);
-    safeSet('ai_fitness_user', currentUser);
-    authMsg.innerText = '';
-    showToast(isRegister ? '注册成功！欢迎加入内测' : '登录成功！', 'success');
-    updateAuthUI();
-    if (!isRegister) syncHistoryFromCloud();
-    if (typeof initApp === 'function') initApp();
-  }
-
-  function showEmailConfirmModal(email) {
-    // Remove existing overlay if any
-    var existing = document.getElementById('emailConfirmOverlay');
-    if (existing) existing.remove();
-    var overlay = document.createElement('div');
-    overlay.id = 'emailConfirmOverlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:3000;display:flex;align-items:center;justify-content:center;';
-    overlay.innerHTML = '<div style="background:var(--paper-light,#FDFBF7);border:1px solid var(--border-line,#E5DED2);border-radius:12px;padding:2rem;max-width:420px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.15);">' +
-      '<div style="font-size:3rem;margin-bottom:0.75rem;">🎉</div>' +
-      '<h2 style="font-size:1.3rem;font-weight:700;margin-bottom:0.75rem;color:var(--ink-primary,#1D1B18);">账号创建成功！</h2>' +
-      '<p style="font-size:0.9rem;color:var(--ink-secondary,#7A7672);line-height:1.6;margin-bottom:1rem;">为保护你的健身数据安全，<br>我们已向 <strong>' + email + '</strong> 发送了激活邮件。</p>' +
-      '<p style="font-size:0.82rem;color:var(--ink-tertiary,#A8A49E);line-height:1.5;margin-bottom:1.25rem;">👉 请前往邮箱（没看到？检查<strong>垃圾邮件</strong>或<strong>订阅邮件</strong>夹）<br>点击 <strong>"Confirm email address"</strong> 链接完成激活。<br><br>激活后返回本页面登录，<br>你的 AI 教练已经等不及了 💪</p>' +
-      '<button onclick="document.getElementById(\'emailConfirmOverlay\').remove()" style="background:var(--red-ink,#C53030);border:none;color:#fff;padding:0.7rem 2rem;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">知道了</button>' +
-      '</div>';
-    document.body.appendChild(overlay);
+    return res.json();
   }
 
   loginBtn.addEventListener('click', async () => {
-    var email = setEmail.value.trim();
-    var password = setPassword.value.trim();
+    const email = setEmail.value.trim();
+    const password = setPassword.value.trim();
     if (!email || !password) { authMsg.innerText = '请填写邮箱和密码'; return; }
     authMsg.innerText = '登录中...';
-    try { await supabaseLogin(email, password, false); } catch (e) { authMsg.innerText = e.message; }
+    try {
+      const data = await apiCall('/auth/login', 'POST', { email, password });
+      authToken = data.access_token;
+      currentUser = data.user;
+      localStorage.setItem('ai_fitness_token', authToken);
+      localStorage.setItem('ai_fitness_user', JSON.stringify(currentUser));
+      authMsg.innerText = '';
+      showToast('登录成功！', 'success');
+      updateMembershipUI();
+      updateSettingsAuthUI();
+      syncHistoryFromCloud();
+    } catch (e) { authMsg.innerText = e.message; }
   });
 
   registerBtn.addEventListener('click', async () => {
-    var email = setEmail.value.trim();
-    var password = setPassword.value.trim();
+    const email = setEmail.value.trim();
+    const password = setPassword.value.trim();
     if (!email || !password) { authMsg.innerText = '请填写邮箱和密码'; return; }
-    if (password.length < 8) { authMsg.innerText = '密码至少8位，需包含大小写字母和数字'; return; }
+    if (password.length < 6) { authMsg.innerText = '密码至少6位'; return; }
     authMsg.innerText = '注册中...';
-    try { await supabaseLogin(email, password, true); } catch (e) { authMsg.innerText = e.message; }
+    try {
+      const data = await apiCall('/auth/register', 'POST', { email, password });
+      authToken = data.access_token;
+      currentUser = data.user;
+      localStorage.setItem('ai_fitness_token', authToken);
+      localStorage.setItem('ai_fitness_user', JSON.stringify(currentUser));
+      authMsg.innerText = '';
+      showToast('注册成功！赠送3天免费试用', 'success');
+      updateMembershipUI();
+      updateSettingsAuthUI();
+    } catch (e) { authMsg.innerText = e.message; }
   });
 
-  logoutBtn.addEventListener('click', async () => {
-    if (supabaseClient) { await supabaseClient.auth.signOut(); }
+  logoutBtn.addEventListener('click', () => {
     safeRemove('ai_fitness_token');
     safeRemove('ai_fitness_user');
     authToken = null;
     currentUser = null;
     showToast('已退出登录', 'info');
-    updateAuthUI();
+    updateMembershipUI();
+    updateSettingsAuthUI();
   });
 
-  var forgotPwBtn = document.getElementById('forgotPwBtn');
+  const forgotPwBtn = document.getElementById('forgotPwBtn');
   if (forgotPwBtn) forgotPwBtn.addEventListener('click', async () => {
-    var email = setEmail.value.trim();
+    const email = setEmail.value.trim();
     if (!email) { authMsg.innerText = '请先输入邮箱'; return; }
-    if (!supabaseClient) { authMsg.innerText = 'Supabase 未配置'; return; }
     try {
-      var { error } = await supabaseClient.auth.resetPasswordForEmail(email);
-      authMsg.innerText = error ? error.message : '重置链接已发送到你的邮箱';
+      const data = await apiCall('/auth/reset-password', 'POST', { email, password: '' });
+      alert('新密码: ' + data.new_password + '\n\n请复制保存，登录后可修改。');
+      authMsg.innerText = '';
     } catch (e) { authMsg.innerText = e.message; }
   });
 
-  var deleteAccountBtn = document.getElementById('deleteAccountBtn');
+  const deleteAccountBtn = document.getElementById('deleteAccountBtn');
   if (deleteAccountBtn) deleteAccountBtn.addEventListener('click', async () => {
-    if (!confirm('确定要永久删除你的账户和所有数据吗？此操作不可恢复！')) return;
+    if (!confirm('⚠️ 确定要永久删除你的账户和所有数据吗？此操作不可恢复！')) return;
     if (!confirm('再次确认：所有打卡记录和身体数据将被永久删除。')) return;
     try {
       await apiCall('/auth/delete-account', 'DELETE');
@@ -537,7 +469,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wizStep === 4) makePicker(document.querySelector("#picker4 .scroll-picker-list"), 30, 200, 0.5, wizData.targetWeight);
 
     if (wizStep === 8) {
-      readAllPickers();
       const gText = wizData.gender === "male" ? "男" : "女";
       const goalText = wizData.goal === "fat_loss" ? "🔥 无情减脂" : "💪 硬核增肌";
       const dlText = wizData.deadline || "长期战役";
@@ -553,15 +484,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function readAllPickers() {
+  btnWizNext.addEventListener("click", () => {
     const l1 = document.querySelector("#picker1 .scroll-picker-list"); if (l1) { const v = readPickerValue(l1); if (v) wizData.age = v; }
     const l2 = document.querySelector("#picker2 .scroll-picker-list"); if (l2) { const v = readPickerValue(l2); if (v) wizData.height = v; }
     const l3 = document.querySelector("#picker3 .scroll-picker-list"); if (l3) { const v = readPickerValue(l3); if (v) wizData.weight = v; }
     const l4 = document.querySelector("#picker4 .scroll-picker-list"); if (l4) { const v = readPickerValue(l4); if (v) wizData.targetWeight = v; }
-  }
-
-  btnWizNext.addEventListener("click", () => {
-    readAllPickers();
     if (wizStep >= TOTAL_STEPS - 1) return;
     wizStep++;
     updateWizard();
@@ -595,7 +522,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnSkipIllness) btnSkipIllness.addEventListener("click", () => { wizData.illness = "无"; wizStep++; updateWizard(); });
 
   btnWizStart.addEventListener("click", () => {
-    readAllPickers();
     if (wizDeadline && wizDeadline.value) wizData.deadline = wizDeadline.value;
     if (wizIllness && wizIllness.value.trim()) wizData.illness = wizIllness.value.trim();
     profile = { gender: wizData.gender, age: wizData.age, height: wizData.height, weight: wizData.weight, targetWeight: wizData.targetWeight, deadlineDate: wizData.deadline || null, goal: wizData.goal, illnesses: wizData.illness };
@@ -657,186 +583,6 @@ document.addEventListener('DOMContentLoaded', () => {
     deadlineProgressFill.style.width = `${progress}%`;
   }
 
-  // ======== TASK LIST: 自律打卡 ========
-  function getTodayKey() {
-    return 'taskPlan_' + new Date().toLocaleDateString('zh-CN');
-  }
-
-  function generateDailyTasks() {
-    if (!profile) return null;
-    var todayKey = getTodayKey();
-    var saved = safeGet(todayKey);
-    if (saved && saved.tasks) return saved;
-    
-    // Calculate BMR/TDEE for science-backed details
-    var isMale = profile.gender === 'male';
-    var bmr = 10 * profile.weight + 6.25 * profile.height - 5 * profile.age;
-    bmr += isMale ? 5 : -161;
-    var tdee = Math.round(bmr * 1.375);
-    var isFatLoss = profile.goal === 'fat_loss';
-    var targetCal = isFatLoss ? Math.round(tdee - 400) : Math.round(tdee + 300);
-    var bmrInfo = 'BMR ' + Math.round(bmr) + ' kcal | TDEE ' + tdee + ' kcal | 目标 ' + targetCal + ' kcal';
-    
-    var tasks = [];
-    var id = 0;
-
-    tasks.push({ id:'t'+(++id), category:'body', title:'晨起空腹称重', completed:false, detail:bmrInfo });
-
-    if (isFatLoss) {
-      tasks.push({ id:'t'+(++id), category:'diet', title:'早餐: 高蛋白+慢碳', completed:false, detail:'水煮蛋2个+燕麦50g+黑咖啡 | ~380 kcal' });
-      tasks.push({ id:'t'+(++id), category:'diet', title:'午餐: 控碳水', completed:false, detail:'鸡胸肉150g+糙米饭100g+蔬菜 | ~520 kcal' });
-      tasks.push({ id:'t'+(++id), category:'diet', title:'晚餐: 清空碳水', completed:false, detail:'鱼肉200g+绿叶菜不限量 | ~350 kcal' });
-      tasks.push({ id:'t'+(++id), category:'diet', title:'全天 0 含糖饮料', completed:false, detail:'只喝水/黑咖啡/茶 | 日热量约 ' + targetCal + ' kcal' });
-      tasks.push({ id:'t'+(++id), category:'exercise', title:'有氧训练 30 分钟', completed:false, detail:'跑步/单车/跳绳 | 心率130-150 bpm' });
-      tasks.push({ id:'t'+(++id), category:'exercise', title:'核心训练 4 组', completed:false, detail:'卷腹20次+平板支撑60秒 | 组休45秒' });
-      tasks.push({ id:'t'+(++id), category:'exercise', title:'拉伸放松 10 分钟', completed:false, detail:'动态拉伸+泡沫轴 | 重点髋/膝/踝' });
-    } else {
-      tasks.push({ id:'t'+(++id), category:'diet', title:'早餐: 足量碳水+蛋白', completed:false, detail:'全麦面包2片+鸡蛋3个+牛奶 | ~550 kcal' });
-      tasks.push({ id:'t'+(++id), category:'diet', title:'午餐: 高蛋白+碳水', completed:false, detail:'米饭200g+牛肉150g+蔬菜 | ~700 kcal' });
-      tasks.push({ id:'t'+(++id), category:'diet', title:'晚餐: 碳水+蛋白', completed:false, detail:'红薯150g+鸡胸200g+蔬菜 | ~550 kcal' });
-      tasks.push({ id:'t'+(++id), category:'diet', title:'训练后蛋白补充', completed:false, detail:'乳清蛋白30g+香蕉 | 日热量约 ' + targetCal + ' kcal' });
-      tasks.push({ id:'t'+(++id), category:'exercise', title:'力量训练', completed:false, detail:'深蹲/卧推/硬拉 各4组 | RPE 7-8' });
-      tasks.push({ id:'t'+(++id), category:'exercise', title:'核心训练 4 组', completed:false, detail:'悬垂提膝15次+交替单车20次 | 组休60秒' });
-      tasks.push({ id:'t'+(++id), category:'exercise', title:'拉伸放松 15 分钟', completed:false, detail:'训练后静态拉伸+泡沫轴 | 保证关节活动度' });
-    }
-    
-    tasks.push({ id:'t'+(++id), category:'lifestyle', title:'23:00 前熄灯睡觉', completed:false, detail:'保证7-8小时睡眠 | 生长激素分泌高峰' });
-    tasks.push({ id:'t'+(++id), category:'lifestyle', title:'全天饮水 3L+', completed:false, detail:'加速代谢 | 建议分8-10次饮用' });
-    
-    var plan = { generated: Date.now(), tasks: tasks, notes: '' };
-    safeSet(todayKey, plan);
-    return plan;
-  }
-
-  function renderTaskList() {
-    if (!taskGroups || !taskDate || !taskStreak) return;
-    var plan = generateDailyTasks();
-    if (!plan) { taskGroups.innerHTML = '<div class="task-empty">请先完成身体数据配置</div>'; return; }
-    
-    taskDate.textContent = new Date().toLocaleDateString('zh-CN', { month:'long', day:'numeric', weekday:'short' });
-    var s = calcStreak();
-    taskStreak.innerHTML = '&#x1F525; ' + s.current + ' 天';
-    
-    var catLabels = { body:'💧 身体', diet:'🍳 饮食', exercise:'🏃 运动', lifestyle:'🌙 作息' };
-    var groups = {};
-    plan.tasks.forEach(function(t) {
-      if (!groups[t.category]) groups[t.category] = [];
-      groups[t.category].push(t);
-    });
-    
-    var html = '';
-    ['body','diet','exercise','lifestyle'].forEach(function(cat) {
-      if (!groups[cat]) return;
-      html += '<div class="task-group"><div class="task-group-title">' + catLabels[cat] + '</div>';
-      groups[cat].forEach(function(t) {
-        var cls = t.completed ? ' task-item completed' : ' task-item';
-        var detailHtml = t.detail ? '<div class="task-item-detail">' + sanitizeHTML(t.detail) + '</div>' : '';
-        html += '<div class="' + cls + '" data-task-id="' + t.id + '" onclick="window._toggleTask(\'' + t.id + '\')">' +
-          '<div class="task-check"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>' +
-          '<div class="task-item-body"><div class="task-item-title">' + sanitizeHTML(t.title) + '</div>' + detailHtml + '</div>' +
-          '</div>';
-      });
-      html += '</div>';
-    });
-    taskGroups.innerHTML = html;
-    
-    if (taskNotes && plan.notes) taskNotes.value = plan.notes;
-    updateTaskProgress();
-  }
-
-  window._toggleTask = function(taskId) {
-    var todayKey = getTodayKey();
-    var plan = safeGet(todayKey);
-    if (!plan) return;
-    plan.tasks.forEach(function(t) {
-      if (t.id === taskId) t.completed = !t.completed;
-    });
-    safeSet(todayKey, plan);
-    renderTaskList();
-  };
-
-  function updateTaskProgress() {
-    if (!taskProgressFill || !taskProgressPct || !taskProgressNum) return;
-    var plan = safeGet(getTodayKey());
-    if (!plan || !plan.tasks.length) return;
-    var total = plan.tasks.length;
-    var done = plan.tasks.filter(function(t) { return t.completed; }).length;
-    var pct = Math.round((done / total) * 100);
-
-    taskProgressFill.style.width = pct + '%';
-    taskProgressFill.className = 'task-progress-fill' + (pct >= 67 ? ' high' : pct >= 34 ? ' mid' : '');
-    taskProgressPct.textContent = pct + '%';
-    taskProgressNum.textContent = done + '/' + total;
-
-    // Motivational motto
-    var mottoEl = document.getElementById('taskMotto');
-    var motto = getMotto(done, total, pct);
-    if (mottoEl) mottoEl.textContent = motto;
-
-    // Milestone toasts (only once per milestone)
-    if (!plan._milestones) plan._milestones = {};
-    var milestones = [25, 50, 75, 100];
-    milestones.forEach(function(m) {
-      if (pct >= m && !plan._milestones[m]) {
-        plan._milestones[m] = true;
-        safeSet(getTodayKey(), plan);
-        var msgs = {
-          25: '🚀 四分之一！渐入佳境',
-          50: '🎯 过半！你比昨天更强',
-          75: '⚡ 冲刺！就剩最后几步',
-          100: '🏆 全部完成！今天你赢麻了'
-        };
-        showToast(msgs[m], 'success');
-      }
-    });
-  }
-
-  function getMotto(done, total, pct) {
-    if (pct === 0) return '新的一天，从第一个任务开始 💪';
-    if (pct <= 20) return '好的开始！坚持下去 ⚡';
-    if (pct <= 40) return '你正在变强，一步一个脚印 👣';
-    if (pct <= 55) return '过半了！你比昨天更接近目标 🎯';
-    if (pct <= 70) return '继续保持，今天属于你 🔥';
-    if (pct <= 85) return '冲刺阶段，不要停下来 🚀';
-    if (pct < 100) return '最后一公里，全力以赴 💥';
-    return '全部完成！你就是今天的冠军 🏆';
-  }
-
-  btnTaskSubmit.addEventListener('click', function() {
-    if (!profile) { showToast('请先完成身体数据配置', 'error'); return; }
-    var plan = safeGet(getTodayKey());
-    if (!plan) return;
-    
-    // Save notes
-    if (taskNotes) { plan.notes = taskNotes.value.trim(); safeSet(getTodayKey(), plan); }
-    
-    var total = plan.tasks.length;
-    var done = plan.tasks.filter(function(t) { return t.completed; }).length;
-    var pct = Math.round((done / total) * 100);
-    var incomplete = plan.tasks.filter(function(t) { return !t.completed; }).map(function(t) { return t.title; }).join('、');
-    
-    // Switch to check-in tab and pre-fill
-    var tabBtnsAll = document.querySelectorAll('.tab-btn');
-    tabBtnsAll.forEach(function(b) { b.classList.remove('active'); });
-    var checkinTab = document.querySelector('.tab-btn[data-tab="checkin"]');
-    if (checkinTab) checkinTab.classList.add('active');
-    
-    var allPanels = document.querySelectorAll('.tab-panel');
-    allPanels.forEach(function(p) { p.classList.remove('active'); });
-    var checkinPanel = document.getElementById('panelCheckin');
-    if (checkinPanel) checkinPanel.classList.add('active');
-    
-    // Pre-fill form
-    var summary = '✅ 已完成 ' + done + '/' + total + ' (' + pct + '%)';
-    if (incomplete) summary += ' | ❌ 未完成: ' + incomplete;
-    if (plan.notes) summary += ' | 📝 ' + plan.notes;
-    
-    if (ciState && ciState.value === '') ciState.value = summary;
-    if (ciExercise) ciExercise.value = summary;
-    
-    showToast('已跳转到打卡页，请补充具体数据后提交', 'info');
-  });
-
   // --- DYNAMIC PLAN GENERATOR (基于用户最后打卡反馈实时生成) ---
   function generateDynamicPlan() {
     if (!profile) return;
@@ -873,29 +619,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const carbTarget = isFatLoss ? Math.round(currentWeight * 1.6) : Math.round(currentWeight * 4.5);
     const fatTarget = Math.round((targetCalories - (proteinTarget * 4) - (carbTarget * 4)) / 9);
 
-    // Safety guards
-    var safetyWarnings = [];
-    const calFloor = isMale ? 1500 : 1200;
-    var safeCalories = targetCalories;
-    var safeFat = fatTarget;
-    var safeCarb = carbTarget;
-    
-    if (targetCalories < calFloor) {
-      safetyWarnings.push('热量目标(' + targetCalories + ' kcal)低于安全底线(' + calFloor + ' kcal)，已自动调整。过低热量会导致代谢损伤、肌肉流失和激素紊乱。');
-      safeCalories = calFloor;
-    }
-    if (proteinTarget > currentWeight * 3.5) {
-      safetyWarnings.push('蛋白目标偏高(' + proteinTarget + 'g)，超过 3.5g/kg 可能增加肾脏负担，建议控制在 ' + Math.round(currentWeight * 3) + 'g 以内。');
-    }
-    if (safeFat < 0) {
-      safeFat = Math.round(safeCalories * 0.2 / 9);
-      safetyWarnings.push('脂肪目标计算异常，已自动调整为安全值。请确认碳水或蛋白摄入未过高。');
-    }
-    if (safeCarb < 0) {
-      safeCarb = Math.round(safeCalories * 0.3 / 4);
-      safetyWarnings.push('碳水目标计算异常，已自动调整为安全值。请确认蛋白摄入未过高。');
-    }
-
     let feedbackNote = '';
     if (latestCheckIn) {
       const fb = latestCheckIn.exerciseFeedback || '';
@@ -913,15 +636,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isFatLoss) {
       dietSection = `
         <div style="margin-bottom: 1.25rem;">
-          <h4 style="color: var(--accent-color); margin-bottom: 0.5rem;">🔥 今日燃脂能量底座：${safeCalories} kcal</h4>
+          <h4 style="color: var(--accent-color); margin-bottom: 0.5rem;">🔥 今日燃脂能量底座：${targetCalories} kcal</h4>
           <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${feedbackNote}</p>
           <ul style="padding-left: 1.25rem; font-size: 0.9rem;">
             <li><strong>蛋白质 (高配)</strong>：约 ${proteinTarget}g / 天（鸡胸肉、牛里脊、鸡蛋、乳清蛋白）</li>
-            <li><strong>碳水化合物 (控量)</strong>：约 ${safeCarb}g / 天（慢碳：燕麦、糙米、红薯）</li>
-            <li><strong>脂肪 (优质)</strong>：约 ${safeFat}g / 天（坚果、橄榄油、牛油果）</li>
+            <li><strong>碳水化合物 (控量)</strong>：约 ${carbTarget}g / 天（慢碳：燕麦、糙米、红薯）</li>
+            <li><strong>脂肪 (优质)</strong>：约 ${fatTarget}g / 天（坚果、橄榄油、牛油果）</li>
             <li><strong>全天水耗</strong>：至少 3L 纯净水，加速钠代谢。</li>
           </ul>
-          ${safetyWarnings.length ? '<div style="margin-top:0.6rem;padding:0.6rem 0.8rem;background:rgba(197,48,48,0.06);border-left:3px solid var(--accent-color);border-radius:0 4px 4px 0;font-size:0.78rem;color:var(--accent-color);">' + safetyWarnings.map(function(w){return '⚠️ '+w}).join('<br>') + '</div>' : ''}
         </div>
       `;
       exerciseSection = `
@@ -932,22 +654,21 @@ document.addEventListener('DOMContentLoaded', () => {
             <li><strong>有氧冲刺</strong>：30-40 分钟稳态有氧 + 10 分钟 HIIT 收尾。</li>
             <li><strong>辅助力量</strong>：哑铃深蹲 4组*20次 + 俯卧撑 4组*15次，组休 45 秒。</li>
             <li><strong>腹肌雕琢</strong>：仰卧卷腹 4组*20次 + 平板支撑 3组*60秒。</li>
-            <li><strong>拉伸放松</strong>：训练后拉伸 10 分钟，加入泡沫轴滚压。</li>
+            <li><strong>睡眠死命令</strong>：23:30 前熄火卧床，燃脂黄金窗口。</li>
           </ul>
         </div>
       `;
     } else {
       dietSection = `
         <div style="margin-bottom: 1.25rem;">
-          <h4 style="color: var(--accent-orange); margin-bottom: 0.5rem;">💪 今日增肌合成底座：${safeCalories} kcal</h4>
+          <h4 style="color: var(--accent-orange); margin-bottom: 0.5rem;">💪 今日增肌合成底座：${targetCalories} kcal</h4>
           <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${feedbackNote}</p>
           <ul style="padding-left: 1.25rem; font-size: 0.9rem;">
             <li><strong>蛋白质</strong>：约 ${proteinTarget}g / 天（足量蛋白维持正氮平衡）</li>
-            <li><strong>碳水化合物 (超量)</strong>：约 ${safeCarb}g / 天（充足糖原储备）</li>
-            <li><strong>脂肪</strong>：约 ${safeFat}g / 天（维持激素水平）</li>
+            <li><strong>碳水化合物 (超量)</strong>：约 ${carbTarget}g / 天（充足糖原储备）</li>
+            <li><strong>脂肪</strong>：约 ${fatTarget}g / 天（维持激素水平）</li>
             <li><strong>全天水耗</strong>：至少 3.5L，保证肌肉合成代谢顺畅。</li>
           </ul>
-          ${safetyWarnings.length ? '<div style="margin-top:0.6rem;padding:0.6rem 0.8rem;background:rgba(197,48,48,0.06);border-left:3px solid var(--accent-color);border-radius:0 4px 4px 0;font-size:0.78rem;color:var(--accent-color);">' + safetyWarnings.map(function(w){return '⚠️ '+w}).join('<br>') + '</div>' : ''}
         </div>
       `;
       exerciseSection = `
@@ -957,18 +678,13 @@ document.addEventListener('DOMContentLoaded', () => {
             <li><strong>关节保护</strong>：负重前充分热身 15 分钟，激活肩/髋/核心。</li>
             <li><strong>抗阻主导</strong>：深蹲 4组*10次 + 卧推 4组*10次 + 硬拉 4组*8次。</li>
             <li><strong>腹肌加练</strong>：悬垂提膝 4组*15次 + 交替单车 4组*20次。</li>
-            <li><strong>拉伸放松</strong>：训练后拉伸 15 分钟，泡沫轴放松全身。</li>
+            <li><strong>超量恢复</strong>：23:30 前挺尸，生长激素修复肌纤维。</li>
           </ul>
-          ${safetyWarnings.length ? '<div style="margin-top:0.6rem;padding:0.6rem 0.8rem;background:rgba(197,48,48,0.06);border-left:3px solid var(--accent-color);border-radius:0 4px 4px 0;font-size:0.78rem;color:var(--accent-color);">' + safetyWarnings.map(function(w){return '⚠️ '+w}).join('<br>') + '</div>' : ''}
         </div>
       `;
     }
 
-    const planHTML = '<div style="display: flex; flex-direction: column; gap: 1rem;">' +
-      '<div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 1.25rem; background: var(--paper-light);">' + dietSection + '</div>' +
-      '<div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 1.25rem; background: var(--paper-light);">' + exerciseSection + '</div>' +
-      '<p style="font-size:0.68rem;color:var(--text-secondary);text-align:center;margin-top:0.5rem;">⚠️ 以上计划由 AI 生成，仅供参考。在开始任何饮食或运动计划前请咨询专业医师。</p>' +
-      '</div>';
+    const planHTML = '<div style="display: flex; flex-direction: column; gap: 1rem;"><div style="border: 1px solid var(--panel-border); border-radius: 16px; padding: 1.25rem; background: rgba(255, 255, 255, 0.15);">' + dietSection + '</div><div style="border: 1px solid var(--panel-border); border-radius: 16px; padding: 1.25rem; background: rgba(255, 255, 255, 0.15);">' + exerciseSection + '</div></div>';
     if (planContent) planContent.innerHTML = planHTML;
     if (planContentInline) planContentInline.innerHTML = planHTML;
   }
@@ -976,17 +692,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- TAB ROUTING ---
   tabBtns.forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const activeTab = btn.dataset.tab;
-      
+      var activeTab = btn.dataset.tab;
+      console.log('Tab clicked:', activeTab);
       tabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      
+      var found = false;
       tabPanels.forEach(panel => {
         panel.classList.remove('active');
-        if (panel.id === `panel${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`) {
+        if (panel.id === 'panel' + activeTab.charAt(0).toUpperCase() + activeTab.slice(1)) {
           panel.classList.add('active');
+          found = true;
         }
       });
+      if (!found) { document.getElementById('loadingScreen').textContent = 'Panel not found: panel' + activeTab.charAt(0).toUpperCase() + activeTab.slice(1); }
     });
   });
 
@@ -1033,16 +751,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    var weightVal = parseFloat(ciWeight.value);
-    if (isNaN(weightVal) || weightVal <= 20 || weightVal >= 300) {
-      showToast('请输入有效的体重数值（20-300 kg）', 'error');
-      return;
-    }
-
     const checkInData = {
       date: new Date().toLocaleDateString('zh-CN'),
       timestamp: Date.now(),
-      currentWeight: weightVal,
+      currentWeight: parseFloat(ciWeight.value),
       weightCondition: ciWeightCondition.value,
       stateDescription: ciState.value.trim(),
       breakfast: ciBreakfast.value.trim() || '未吃/未填',
@@ -1050,17 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
       dinner: ciDinner.value.trim(),
       tonightExercise: ciExercise.value.trim(),
       exerciseFeedback: ciFeedback.value.trim(),
-      ultimateGoal: ciGoalFlag.value.trim(),
-      // Profile context for AI personalization
-      profileGender: profile.gender || 'male',
-      profileAge: profile.age || 25,
-      profileHeight: profile.height || 170,
-      profileWeight: profile.weight || 70,
-      profileTargetWeight: profile.targetWeight || 65,
-      profileGoal: profile.goal || 'fat_loss',
-      profileIllnesses: profile.illnesses || '无',
-      profileDeadline: profile.deadlineDate || '',
-      recentHistory: history.slice(0, 5).map(function(h) { return h.date + ': ' + h.weight + 'kg - ' + (h.checkIn.stateDescription||'') }).join(' | ') || '暂无'
+      ultimateGoal: ciGoalFlag.value.trim()
     };
 
     // Save previous weight for AI calculations
@@ -1113,7 +815,6 @@ document.addEventListener('DOMContentLoaded', () => {
       renderHistoryList();
       updateStreakUI();
       renderWeightChart();
-      renderTaskList();
 
     } catch (err) {
       aiLoading.style.display = 'none';
@@ -1235,7 +936,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --- UPGRADE MODAL ---
-  upgradeBtn.addEventListener('click', () => { showToast('内测期间全部免费', 'info'); });
+  upgradeBtn.addEventListener('click', () => { upgradeModal.classList.add('active'); });
   upgradeBtnSettings.addEventListener('click', () => {
     settingsModal.classList.remove('active');
     upgradeModal.classList.add('active');
@@ -1350,12 +1051,6 @@ function renderActions(group) {
         subtabButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         renderActions(btn.dataset.group);
-        // Track muscle group for achievements
-        var g = btn.dataset.group;
-        if (!gameState._musclesTrained) gameState._musclesTrained = [];
-        if (gameState._musclesTrained.indexOf(g) < 0) { gameState._musclesTrained.push(g); safeSet("game_state", gameState); }
-        gameState.guideViews = (gameState.guideViews || 0) + 1; safeSet("game_state", gameState);
-        checkBadges();
       });
     });
   }
@@ -1444,32 +1139,86 @@ function renderActions(group) {
         datasets: [{
           label: '体重 (kg)',
           data: data,
-          borderColor: '#4D94FF',
-          backgroundColor: 'rgba(77,148,255,0.08)',
+          borderColor: '#0a84ff',
+          backgroundColor: 'rgba(10,132,255,0.1)',
           fill: true, tension: 0.3,
-          pointRadius: 4, pointBackgroundColor: '#4D94FF'
+          pointRadius: 4, pointBackgroundColor: '#0a84ff'
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: '#7D7F84', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-          y: { ticks: { color: '#7D7F84', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          x: { ticks: { color: '#8e8e93', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { ticks: { color: '#8e8e93', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
         }
       }
     });
   }
 
-  // ============ FEATURE 2: WELCOME CARD ============
+  // ============ FEATURE 2: ONBOARDING GUIDE OVERLAY ============
+  const guideOverlay = document.getElementById('guideOverlay');
+  const guideSpot = document.getElementById('guideSpot');
+  const guideText = document.getElementById('guideText');
+  const guideNext = document.getElementById('guideNext');
+  const guideSkip = document.getElementById('guideSkip');
+  let guideStep = 0;
+  let guideActive = false;
+  const guideTargets = [
+    { el: '#panelCheckin', tab: 'checkin', text: '👋 从这里开始！每天填写体重、饮食和运动，教练才能为你生成专属审计。' },
+    { el: '#panelGuide', tab: 'guide', text: '🏋️ 44个动作带Bilibili教学视频，新手也能看得懂、学得会。' },
+    { el: '#panelHistory', tab: 'history', text: '📊 查看历史打卡记录和体重趋势，见证自己的蜕变。' }
+  ];
+
+  function positionSpot() {
+    const t = guideTargets[guideStep];
+    const el = document.querySelector(t.el);
+    if (!el || !el.offsetParent) return;
+    const rect = el.getBoundingClientRect();
+    guideSpot.style.top = rect.top + 'px';
+    guideSpot.style.left = rect.left + 'px';
+    guideSpot.style.width = rect.width + 'px';
+    guideSpot.style.height = rect.height + 'px';
+  }
+
+  function showGuideStep() {
+    const t = guideTargets[guideStep];
+    // Switch to correct tab so panel is visible
+    const tabBtn = document.querySelector(`[data-tab="${t.tab}"]`);
+    if (tabBtn) tabBtn.click();
+    // Wait for tab animation then position
+    setTimeout(positionSpot, 200);
+    guideText.textContent = t.text;
+    guideNext.textContent = guideStep >= guideTargets.length - 1 ? '开始使用 🚀' : '下一步 →';
+  }
+
   function startGuide() {
     if (safeGet('guide_done')) return;
-    var overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
-    overlay.innerHTML = '<div style="background:#141418;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:2rem;max-width:380px;width:90%;text-align:center;color:#F2F0ED;"><h2 style="margin:0 0 0.5rem;">🏋️ 欢迎来到 教练.AI</h2><p style="color:#7D7F84;font-size:0.8rem;margin-bottom:1rem;">AI驱动 · 每日重塑</p><div style="text-align:left;font-size:0.85rem;line-height:2;"><div>📝 <b>每日打卡</b> — 记录体重饮食运动</div><div>🍽️ <b>饮食AI</b> — 拍照识别热量分析</div><div>🏆 <b>成就殿堂</b> — 积分解锁徽章等级</div><div>🏋️ <b>动作库</b> — 44动作+视频教学</div><div>📊 <b>历史记录</b> — 追踪体重趋势曲线</div><div>👥 <b>社区</b> — 分享心得互相鼓励</div><div>👤 <b>我的</b> — 运动数据邀请好友</div></div><button id="_gdBtn" style="background:#FF3B3B;border:none;color:#fff;padding:0.7rem 2rem;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer;margin-top:1.2rem;">知道了，开始使用</button></div>';
-    document.body.appendChild(overlay);
-    document.getElementById('_gdBtn').onclick = function() { overlay.remove(); safeSet('guide_done', true); };
+    guideActive = true;
+    guideStep = 0;
+    guideOverlay.style.display = 'flex';
+    showGuideStep();
   }
+
+  // Track scroll/resize while guide is active
+  window.addEventListener('scroll', () => { if (guideActive && guideOverlay.style.display === 'flex') positionSpot(); }, { passive: true });
+  window.addEventListener('resize', () => { if (guideActive && guideOverlay.style.display === 'flex') positionSpot(); });
+
+  guideNext.addEventListener('click', () => {
+    guideStep++;
+    if (guideStep >= guideTargets.length) {
+      guideOverlay.style.display = 'none';
+      guideActive = false;
+      safeSet('guide_done', true);
+      return;
+    }
+    showGuideStep();
+  });
+  guideSkip.addEventListener('click', () => {
+    guideOverlay.style.display = 'none';
+    guideActive = false;
+    safeSet('guide_done', true);
+  });
 
   // ============ FEATURE 3: AI GUEST BLOCK ============
   const aiGuestUpgradeBtn = document.getElementById('aiGuestUpgradeBtn');
@@ -1478,7 +1227,7 @@ function renderActions(group) {
     if (!aiGuestUpgradeBtn || !aiGuestMsg) return;
     if (!authToken) {
       aiGuestUpgradeBtn.style.display = '';
-      aiGuestMsg.textContent = '登录后可解锁 AI 深度审计。未登录时也可使用本地智能分析。';
+      aiGuestMsg.textContent = '未登录状态下仅可使用本地规则审计。注册即送3天免费试用，解锁AI深度生化分析。';
     } else {
       aiGuestUpgradeBtn.style.display = 'none';
       aiGuestMsg.textContent = '请先在【今日数据打卡】中提交你的体重、饮食与运动反馈，教练才能对你实施生化格式化审计。';
@@ -1556,7 +1305,76 @@ function renderActions(group) {
       });
     });
   });
-  gameState = safeGet("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
+
+  // ============ FEATURE 6: STREAK TRACKING ============
+  const streakCount = document.getElementById('streakCount');
+  const streakBest = document.getElementById('streakBest');
+  const streakModal = document.getElementById('streakModal');
+  const streakEmoji = document.getElementById('streakEmoji');
+  const streakTitle = document.getElementById('streakTitle');
+  const streakMsg = document.getElementById('streakMsg');
+  const streakCloseBtn = document.getElementById('streakCloseBtn');
+
+  function calcStreak() {
+    if (!history || history.length === 0) return { current: 0, best: 0 };
+    const dates = history.map(h => h.date).filter(d => d);
+    if (dates.length === 0) return { current: 0, best: 0 };
+    let current = 1, best = parseInt((safeGet('streak_best') || 0));
+    for (let i = 1; i < dates.length; i++) {
+      const prev = new Date(dates[i-1]);
+      const curr = new Date(dates[i]);
+      const diff = Math.round((prev - curr) / 86400000);
+      if (diff === 1) { current++; } else { break; }
+    }
+    best = Math.max(best, current);
+    safeSet("streak_best", best);
+    return { current, best };
+  }
+
+  function updateStreakUI() {
+    if (!streakCount || !streakBest) return;
+    const s = calcStreak();
+    streakCount.textContent = `${s.current} 天`;
+    streakBest.textContent = `最长记录: ${s.best} 天`;
+    const milestones = [7, 30, 90];
+    for (const m of milestones) {
+      if (s.current >= m && (safeGet('streak_milestone') || 0) < m) {
+        safeSet("streak_milestone", m);
+        showStreakCelebration(m);
+        break;
+      }
+    }
+  }
+
+  function showStreakCelebration(days) {
+    if (!streakModal) return;
+    if (days >= 90) { streakEmoji.textContent = '👑'; streakTitle.textContent = '90天硬核王者！'; streakMsg.textContent = '你已经超越了99%的人，真正的钢铁意志。'; }
+    else if (days >= 30) { streakEmoji.textContent = '💎'; streakTitle.textContent = '30天钻石战士！'; streakMsg.textContent = '一个月不间断，你的身体已经悄然改变。'; }
+    else { streakEmoji.textContent = '🔥'; streakTitle.textContent = '连续7天打卡！'; streakMsg.textContent = '第一周是最难的，你挺过来了。好戏现在才开始。'; }
+    streakModal.classList.add('active');
+  }
+  if (streakCloseBtn) streakCloseBtn.addEventListener('click', () => { streakModal.classList.remove('active'); });
+  window.addEventListener('click', (e) => { if (e.target === streakModal) streakModal.classList.remove('active'); });
+
+  // --- UPDATE HOOKS: call after checkin / history sync ---
+  const origInitApp = initApp;
+  initApp = function() {
+    origInitApp();
+    setTimeout(() => {
+      updateStreakUI();
+      renderWeightChart();
+      updateGuestUI();
+      if (profile && !safeGet('guide_done')) {
+        setTimeout(startGuide, 600);
+      }
+    }, 100);
+  };
+
+  const origRenderHistory = renderHistoryList;
+  renderHistoryList = function() {
+    origRenderHistory();
+    setTimeout(() => { updateStreakUI(); renderWeightChart(); }, 100);
+  };
 
   // ============ TONE SWITCH ============
   const toneHardcore = document.getElementById('toneHardcore');
@@ -1590,24 +1408,24 @@ function renderActions(group) {
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       const w = 600, h = 800;
-      ctx.fillStyle = '#0A0A0C';
+      ctx.fillStyle = '#0f0f11';
       ctx.fillRect(0, 0, w, h);
       // Gradient accent
       const g = ctx.createLinearGradient(0, 0, w, h);
-      g.addColorStop(0, 'rgba(255,59,59,0.12)');
-      g.addColorStop(1, 'rgba(77,148,255,0.08)');
+      g.addColorStop(0, 'rgba(10,132,255,0.15)');
+      g.addColorStop(1, 'rgba(255,149,0,0.1)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
       // Title
-      ctx.fillStyle = '#F2F0ED'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('教练.AI', w/2, 200);
-      ctx.font = '20px sans-serif'; ctx.fillStyle = '#7D7F84';
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('Morph.AI', w/2, 200);
+      ctx.font = '20px sans-serif'; ctx.fillStyle = '#8e8e93';
       ctx.fillText('AI驱动 · 每日重塑', w/2, 240);
       // Stats
       const s = calcStreak();
-      ctx.font = 'bold 72px sans-serif'; ctx.fillStyle = '#FF3B3B';
+      ctx.font = 'bold 72px sans-serif'; ctx.fillStyle = '#ff9f0a';
       ctx.fillText(`${s.current} 天`, w/2, 360);
-      ctx.font = '24px sans-serif'; ctx.fillStyle = '#7D7F84';
+      ctx.font = '24px sans-serif'; ctx.fillStyle = '#8e8e93';
       ctx.fillText('连续打卡', w/2, 395);
       // Weight change
       const initialW = profile ? profile.weight : 0;
@@ -1615,12 +1433,12 @@ function renderActions(group) {
       const diff = (latestW - initialW).toFixed(1);
       const arrow = diff < 0 ? '↓' : diff > 0 ? '↑' : '→';
       ctx.font = 'bold 40px sans-serif';
-      ctx.fillStyle = diff < 0 ? '#00E5A0' : '#FF8C42';
+      ctx.fillStyle = diff < 0 ? '#30d158' : '#ff9f0a';
       ctx.fillText(`${arrow} ${Math.abs(diff)} kg`, w/2, 480);
-      ctx.font = '20px sans-serif'; ctx.fillStyle = '#7D7F84';
+      ctx.font = '20px sans-serif'; ctx.fillStyle = '#8e8e93';
       ctx.fillText('体重变化', w/2, 510);
       // URL
-      ctx.font = '18px sans-serif'; ctx.fillStyle = '#7D7F84';
+      ctx.font = '18px sans-serif'; ctx.fillStyle = '#8e8e93';
       ctx.fillText('扫码下载 · morph.fit', w/2, h - 80);
       // Divider
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
@@ -1658,8 +1476,8 @@ function renderActions(group) {
   // ===== GAME SYSTEM + PROFILE + COMMUNITY + DIET + LOGIN + SCENARIO =====
   var safeGet3 = function(k,f) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : (f !== undefined ? f : null); } catch(e) { return f; } };
   var safeSet3 = function(k,v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} };
-  var serverUrl = window.SERVER_URL || (function(){ var h = window.location.hostname; return (h === 'localhost' || h === '127.0.0.1') ? 'http://localhost:8000' : (window.location.origin || ''); })();
-  gameState = safeGet3("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
+  var serverUrl = "http://localhost:8000";
+  var gameState = safeGet3("game_state") || { points: 0, earnedBadges: [], _musclesTrained: [], guideViews: 0, invited: 0 };
   var LEVELS = [{name:"健身小白",min:0,ico:"🌱"},{name:"入门学徒",min:100,ico:"🌿"},{name:"进阶勇士",min:300,ico:"⚔️"},{name:"铁血战士",min:800,ico:"🛡️"},{name:"变形金刚",min:2000,ico:"🔮"},{name:"终极猎手",min:5000,ico:"👑"},{name:"传奇战神",min:12000,ico:"💎"}];
   var BADGES = [{id:"streak3",cat:"🔥 连签",name:"初出茅庐",ico:"🔥",cond:"streak3",desc:"连续3天"},{id:"streak7",cat:"🔥 连签",name:"钢铁意志",ico:"💎",cond:"streak7",desc:"连续7天"},{id:"streak30",cat:"🔥 连签",name:"不死战神",ico:"👑",cond:"streak30",desc:"连续30天"},{id:"weight5",cat:"⚖️ 体重",name:"小有成就",ico:"🎯",cond:"weight5",desc:"变化5kg"},{id:"weight10",cat:"⚖️ 体重",name:"十斤大关",ico:"🏆",cond:"weight10",desc:"变化10kg"},{id:"checkin10",cat:"📝 打卡",name:"十全十美",ico:"✅",cond:"checkin10",desc:"10次打卡"},{id:"checkin50",cat:"📝 打卡",name:"风雨无阻",ico:"🌧️",cond:"checkin50",desc:"50次打卡"},{id:"guide5",cat:"🏋️ 运动",name:"全面开火",ico:"🏀",cond:"guide5",desc:"练过5部位"},{id:"invite1",cat:"🤝 社交",name:"第一个邀请",ico:"📨",cond:"invite1",desc:"邀请1人"},{id:"invite5",cat:"🤝 社交",name:"传播大使",ico:"📢",cond:"invite5",desc:"邀请5人"}];
 
@@ -1705,8 +1523,9 @@ function renderActions(group) {
   function updateStreakUI() { var sc = document.getElementById("streakCount"); var sb = document.getElementById("streakBest"); if (!sc || !sb) return; var s = calcStreak(); sc.textContent = s.current + " 天"; sb.textContent = "最长记录: " + s.best + " 天"; }
 
   // PROFILE
+  var profileContent = document.getElementById("profileContent"), myProfile = null;
   window._loadProfile = async function() {
-    var pc = document.getElementById("profileContent"); if (!pc) return;
+    if (!profileContent) return;
     if (!authToken) { pc.innerHTML = '<div class="empty-state"><h3>请先登录</h3><p>登录后查看个人资料</p><button class="btn-primary" onclick="window._openLogin()">前往登录</button></div>'; return; }
     try { myProfile = await apiCall("/user/profile"); renderProfile(); loadMyPosts2(); updateNotifBadge2(); } catch(e) {}
   };
@@ -1715,7 +1534,7 @@ function renderActions(group) {
     if (!myProfile || !profileContent) return;
     var lv = getLevel(); var avatarUrl = myProfile.avatar_path ? serverUrl + "/api/uploads/" + myProfile.avatar_path : "";
     var avHTML = avatarUrl ? '<img src="' + avatarUrl + '" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid var(--accent-color);">' : '<div style="width:70px;height:70px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-size:2rem;">👤</div>';
-    var memHTML = '<span style="color:var(--accent-color);">🎉 免费内测</span>';
+    var memHTML = myProfile.membership_expires_at ? '<span style="color:var(--accent-orange);">👑 会员至 ' + myProfile.membership_expires_at.slice(0,10) + '</span>' : (myProfile.is_trial ? '<span style="color:var(--accent-green);">🎁 免费试用中</span>' : '<span>未开通会员</span>');
     profileContent.innerHTML = '<div style="text-align:center;margin-bottom:1.5rem;"><label style="cursor:pointer;">' + avHTML + '<input type="file" id="avatarInput" accept="image/*" style="display:none;"></label><h3>' + (myProfile.nickname||"用户"+myProfile.user_id) + '</h3><p style="font-size:0.8rem;color:var(--text-secondary);">' + lv.ico + ' Lv.' + lv.level + ' ' + lv.name + '</p><p style="font-size:0.75rem;">' + memHTML + '</p></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:1rem;"><div class="profile-stat-box"><strong>' + (myProfile.checkins_count||0) + '</strong><small>打卡</small></div><div class="profile-stat-box"><strong>' + calcStreak().current + '</strong><small>连续</small></div><div class="profile-stat-box"><strong>' + ((gameState._musclesTrained||[]).length) + '</strong><small>部位</small></div></div><div class="badge-grid" id="profileBadges2"></div><div style="margin-top:1rem;"><h4>📝 我的帖子</h4><div id="myPosts2"></div></div>';
     var ai = document.getElementById("avatarInput"); if (ai) ai.addEventListener("change", async function(e) { var f = e.target.files[0]; if (!f) return; var fd = new FormData(); fd.append("avatar", f); try { await fetch(API_BASE + "/user/avatar", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); showToast("头像已更新!","success"); window._loadProfile(); } catch(e){ showToast("上传失败","error"); } });
     var bg = document.getElementById("profileBadges2"); if (bg) BADGES.forEach(function(b) { var e = gameState.earnedBadges.indexOf(b.id) >= 0; bg.innerHTML += '<div class="badge-item ' + (e?"earned":"locked") + '"><span>' + b.ico + '</span><strong>' + b.name + '</strong></div>'; });
@@ -1727,24 +1546,24 @@ function renderActions(group) {
   var createPostModal = document.getElementById("createPostModal"); var postDetailModal = document.getElementById("postDetailModal");
   async function loadCommunityPosts() {
     var cp = document.getElementById("communityPosts"); var cl = document.getElementById("communityLoading"); if (!cp) return; if (cl) cl.style.display = "block";
-    try { var d = await apiCall("/community/posts?category=" + currentCat + "&sort=" + currentSort + "&page=" + currentPage);       cp.innerHTML = d.posts.map(function(p) { var im = p.image_path ? '<img src="' + serverUrl + '/api/uploads/' + p.image_path + '" class="cp-image" loading="lazy">' : ""; return '<div class="community-post" onclick="window._openPost(' + p.id + ')"><span class="cp-cat">' + p.category + '</span><div class="cp-title">' + (p.title||"").replace(/</g,"&lt;") + '</div><div class="cp-meta"><span>' + (p.email||"") + '</span><span>❤ ' + (p.likes_count||0) + '</span><span>💬 ' + (p.comments_count||0) + '</span></div>' + im + '</div>'; }).join(""); } catch(e) { if (cp) cp.innerHTML = '<p style="text-align:center;color:var(--text-secondary);padding:2rem;">' + ((e.message||'').includes("Failed to fetch") ? "后端服务未启动，社区功能暂不可用" : "加载失败") + '</p>'; }
+    try { var d = await apiCall("/community/posts?category=" + currentCat + "&sort=" + currentSort + "&page=" + currentPage); cp.innerHTML = d.posts.map(function(p) { var im = p.image_path ? '<img src="' + serverUrl + '/api/uploads/' + p.image_path + '" class="cp-image" loading="lazy">' : ""; return '<div class="community-post" onclick="window._openPost(' + p.id + ')"><span class="cp-cat">' + p.category + '</span><div class="cp-title">' + (p.title||"").replace(/</g,"&lt;") + '</div><div class="cp-meta"><span>' + (p.email||"") + '</span><span>❤ ' + (p.likes_count||0) + '</span><span>💬 ' + (p.comments_count||0) + '</span></div>' + im + '</div>'; }).join(""); } catch(e) { if (cp) cp.innerHTML = '<p style="text-align:center;color:var(--text-secondary);">加载失败</p>'; }
     if (cl) cl.style.display = "none";
   }
   window._openPost = async function(id) { if (!postDetailModal) return; postDetailModal.classList.add("active"); document.getElementById("postDetailContent").innerHTML = '<div style="text-align:center;padding:2rem;"><div class="spinner"></div></div>'; try { var p = await apiCall("/community/posts/" + id); var im = p.image_path ? '<img src="' + serverUrl + '/api/uploads/' + p.image_path + '" class="community-detail-image">' : ""; var comments = (p.comments||[]).map(function(c) { return '<div class="comment-item"><span class="cm-user">' + (c.email||"") + '</span> ' + (c.content||"").replace(/</g,"&lt;") + '</div>'; }).join(""); document.getElementById("postDetailContent").innerHTML = '<span class="cp-cat">' + p.category + '</span><h3>' + (p.title||"").replace(/</g,"&lt;") + '</h3><div class="cp-meta">' + (p.email||"") + '</div>' + im + '<p style="margin:0.75rem 0;">' + (p.content||"").replace(/</g,"&lt;") + '</p><div style="display:flex;gap:0.5rem;margin-bottom:1rem;"><button class="btn-secondary btn-sm" onclick="window._likePost(' + p.id + ')">❤ ' + (p.likes_count||0) + '</button><button class="btn-secondary btn-sm" onclick="window._reportPost(' + p.id + ')">🚩 举报</button></div><h4>评论</h4><div>' + (comments || '<p style="color:var(--text-secondary);">暂无评论</p>') + '</div><div class="comment-input-row"><input type="text" id="commentInput" class="premium-input" placeholder="写评论..."><button class="btn-primary btn-sm" onclick="window._addComment(' + p.id + ')" style="width:auto;">发送</button></div>'; } catch(e) { document.getElementById("postDetailContent").innerHTML = '<p>加载失败</p>'; } };
   window._likePost = async function(id) { try { await apiCall("/community/posts/" + id + "/like", "POST"); showToast("已点赞","info"); loadCommunityPosts(); } catch(e) { showToast(e.message,"error"); } };
   window._reportPost = async function(id) { try { await apiCall("/community/posts/" + id + "/report", "POST"); showToast("举报已提交","success"); } catch(e) { showToast(e.message,"error"); } };
-  window._addComment = async function(id) { var input = document.getElementById("commentInput"); if (!input || !input.value.trim()) return; if (!authToken) { showToast("请先登录后再评论","error"); return; } try { var fd = new FormData(); fd.append("content", input.value); var res = await fetch(API_BASE + "/community/posts/" + id + "/comments", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("发送失败"); input.value = ""; showToast("评论成功","success"); window._openPost(id); } catch(e) { showToast((e.message||'').includes("Failed to fetch") ? "后端服务未启动" : e.message, "error"); } };
+  window._addComment = async function(id) { var input = document.getElementById("commentInput"); if (!input || !input.value.trim()) return; try { var fd = new FormData(); fd.append("content", input.value); var res = await fetch(API_BASE + "/community/posts/" + id + "/comments", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("发送失败"); input.value = ""; showToast("评论成功","success"); window._openPost(id); } catch(e) { showToast(e.message,"error"); } };
   var btnCP = document.getElementById("btnCreatePost"); if (btnCP) btnCP.addEventListener("click", function() { if (createPostModal) createPostModal.classList.add("active"); });
   var btnCC = document.getElementById("closeCreatePost"); if (btnCC) btnCC.addEventListener("click", function() { if (createPostModal) createPostModal.classList.remove("active"); });
   var btnCD = document.getElementById("closePostDetail"); if (btnCD) btnCD.addEventListener("click", function() { if (postDetailModal) postDetailModal.classList.remove("active"); });
   document.querySelectorAll(".ccat").forEach(function(b) { b.addEventListener("click", function() { document.querySelectorAll(".ccat").forEach(function(x) { x.classList.remove("active"); }); b.classList.add("active"); currentCat = b.dataset.cat; currentPage = 1; loadCommunityPosts(); }); });
   document.querySelectorAll(".csort").forEach(function(b) { b.addEventListener("click", function() { document.querySelectorAll(".csort").forEach(function(x) { x.classList.remove("active"); }); b.classList.add("active"); currentSort = b.dataset.sort; currentPage = 1; loadCommunityPosts(); }); });
-  var btnSP = document.getElementById("btnSubmitPost"); if (btnSP) btnSP.addEventListener("click", async function() { var msg = document.getElementById("postMsg"); if (!authToken) { msg.innerText = "请先登录后再发帖"; return; } var fd = new FormData(); fd.append("title", document.getElementById("postTitle").value.trim()); fd.append("content", document.getElementById("postContent").value.trim()); fd.append("category", document.getElementById("postCategory").value); var img = document.getElementById("postImage").files[0]; if (img) fd.append("image", img); msg.innerText = "发布中..."; try { var res = await fetch(API_BASE + "/community/posts", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) { var er = await res.json().catch(function(){ return {}; }); throw new Error(er.detail || "发布失败"); } createPostModal.classList.remove("active"); document.getElementById("postTitle").value = ""; document.getElementById("postContent").value = ""; document.getElementById("postImage").value = ""; msg.innerText = ""; showToast("发布成功！","success"); loadCommunityPosts(); } catch(e) { msg.innerText = (e.message||'').includes("Failed to fetch") ? "后端服务未启动，请稍后重试" : e.message; } });
+  var btnSP = document.getElementById("btnSubmitPost"); if (btnSP) btnSP.addEventListener("click", async function() { var msg = document.getElementById("postMsg"); var fd = new FormData(); fd.append("title", document.getElementById("postTitle").value.trim()); fd.append("content", document.getElementById("postContent").value.trim()); fd.append("category", document.getElementById("postCategory").value); var img = document.getElementById("postImage").files[0]; if (img) fd.append("image", img); msg.innerText = "发布中..."; try { var res = await fetch(API_BASE + "/community/posts", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) { var er = await res.json().catch(function(){ return {}; }); throw new Error(er.detail || "发布失败"); } createPostModal.classList.remove("active"); document.getElementById("postTitle").value = ""; document.getElementById("postContent").value = ""; document.getElementById("postImage").value = ""; msg.innerText = ""; showToast("发布成功！","success"); loadCommunityPosts(); } catch(e) { msg.innerText = e.message; } });
 
   // DIET AI
   var dietMessages = document.getElementById("dietMessages"); var dietInput = document.getElementById("dietInput"); var dietSendBtn = document.getElementById("dietSendBtn"); var dietPhotoInput = document.getElementById("dietPhotoInput"); var dietTypingEl = document.getElementById("dietTyping");
   function addDietMsg(text, type) { if (!dietMessages) return; var d = document.createElement("div"); d.className = "diet-msg " + type; d.textContent = text; dietMessages.appendChild(d); dietMessages.scrollTop = dietMessages.scrollHeight; }
-  async function sendDietText() { if (!authToken) { showToast("请先登录","error"); return; } var t = dietInput ? dietInput.value.trim() : ""; if (!t) return; dietInput.value = ""; addDietMsg(t, "user"); if (dietTypingEl) dietTypingEl.style.display = "block"; try { var fd = new FormData(); fd.append("content", t); var res = await fetch(API_BASE + "/food/text", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) { var er = await res.json().catch(function(){ return {}; }); throw new Error(er.detail || "请求失败"); } var d = await res.json(); addDietMsg(d.reply, "ai"); var dtc = document.getElementById("dietTotalCal"); if (dtc) dtc.textContent = d.calories; await loadDietStats(); } catch(e) { addDietMsg(e.message.includes("Failed to fetch") ? "后端服务未启动，无法分析饮食。请稍后重试。" : "❌ " + e.message, "ai"); } if (dietTypingEl) dietTypingEl.style.display = "none"; }
+  async function sendDietText() { if (!authToken) { showToast("请先登录","error"); return; } var t = dietInput ? dietInput.value.trim() : ""; if (!t) return; dietInput.value = ""; addDietMsg(t, "user"); if (dietTypingEl) dietTypingEl.style.display = "block"; try { var fd = new FormData(); fd.append("content", t); var res = await fetch(API_BASE + "/food/text", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("失败"); var d = await res.json(); addDietMsg(d.reply, "ai"); var dtc = document.getElementById("dietTotalCal"); if (dtc) dtc.textContent = d.calories; await loadDietStats(); } catch(e) { addDietMsg("❌ " + e.message, "ai"); } if (dietTypingEl) dietTypingEl.style.display = "none"; }
   if (dietSendBtn) dietSendBtn.addEventListener("click", sendDietText);
   if (dietInput) dietInput.addEventListener("keydown", function(e) { if (e.key === "Enter") sendDietText(); });
   if (dietPhotoInput) dietPhotoInput.addEventListener("change", async function() { var f = dietPhotoInput.files[0]; if (!f || !authToken) return; addDietMsg("📸 识别中...", "user"); if (dietTypingEl) dietTypingEl.style.display = "block"; try { var fd = new FormData(); fd.append("image", f); var res = await fetch(API_BASE + "/food/photo", { method:"POST", headers:{"Authorization":"Bearer "+authToken}, body:fd }); if (!res.ok) throw new Error("失败"); var d = await res.json(); addDietMsg(d.reply, "ai"); var dtc = document.getElementById("dietTotalCal"); if (dtc) dtc.textContent = d.calories; await loadDietStats(); } catch(e) { addDietMsg("❌ " + e.message, "ai"); } if (dietTypingEl) dietTypingEl.style.display = "none"; dietPhotoInput.value = ""; });
@@ -1755,9 +1574,8 @@ function renderActions(group) {
   window._openLogin = function() { var m = document.getElementById("loginModal"); if (m) m.classList.add("active"); };
   var headerLoginBtn = document.getElementById("headerLoginBtn"); if (headerLoginBtn) headerLoginBtn.addEventListener("click", function() { window._openLogin(); });
   var closeLogin = document.getElementById("closeLoginModal"); if (closeLogin) closeLogin.addEventListener("click", function() { document.getElementById("loginModal").classList.remove("active"); });
-  var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var result = supabaseClient ? await supabaseClient.auth.signInWithPassword({ email: email, password: pw }) : null; if (result && result.error) throw new Error(result.error.message); if (result) { authToken = result.data.session.access_token; currentUser = result.data.session.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); } else { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); } msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); updateAuthUI(); syncHistoryFromCloud(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
-  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 8) { msg.innerText = "请填写邮箱和密码(至少8位)"; return; } msg.innerText = "注册中..."; try { var result = supabaseClient ? await supabaseClient.auth.signUp({ email: email, password: pw }) : null; if (result && result.error) throw new Error(result.error.message); if (result && result.data.session) { authToken = result.data.session.access_token; currentUser = result.data.session.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！欢迎加入内测","success"); updateMembershipUI(); updateSettingsAuthUI(); updateAuthUI(); } else if (result) { msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showEmailConfirmModal(email); } else { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！欢迎加入内测","success"); updateMembershipUI(); updateSettingsAuthUI(); updateAuthUI(); } } catch(e) { msg.innerText = e.message; } });
-  var btnLF = document.getElementById("loginForgotBtn"); if (btnLF) btnLF.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var msg = document.getElementById("loginMsg"); if (!email) { msg.innerText = "请先输入邮箱"; return; } if (supabaseClient) { try { await supabaseClient.auth.resetPasswordForEmail(email); msg.innerText = "重置链接已发送到你的邮箱"; } catch(e) { msg.innerText = e.message; } } else { try { var d = await apiCall("/auth/reset-password", "POST", { email:email, password:"" }); msg.innerText = d.message || "重置邮件已发送"; } catch(e) { msg.innerText = e.message; } } });
+  var btnLS = document.getElementById("loginSubmitBtn"); if (btnLS) btnLS.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw) { msg.innerText = "请填写邮箱和密码"; return; } msg.innerText = "登录中..."; try { var d = await apiCall("/auth/login", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("登录成功！","success"); updateMembershipUI(); updateSettingsAuthUI(); setTimeout(function() { window._loadProfile(); }, 300); } catch(e) { msg.innerText = e.message; } });
+  var btnLR = document.getElementById("loginRegisterBtn"); if (btnLR) btnLR.addEventListener("click", async function() { var email = document.getElementById("loginEmail").value.trim(); var pw = document.getElementById("loginPassword").value.trim(); var msg = document.getElementById("loginMsg"); if (!email || !pw || pw.length < 6) { msg.innerText = "请填写邮箱和密码(至少6位)"; return; } msg.innerText = "注册中..."; try { var d = await apiCall("/auth/register", "POST", { email:email, password:pw }); authToken = d.access_token; currentUser = d.user; safeSet3("ai_fitness_token", authToken); safeSet3("ai_fitness_user", currentUser); msg.innerText = ""; document.getElementById("loginModal").classList.remove("active"); showToast("注册成功！赠送3天免费试用","success"); updateMembershipUI(); updateSettingsAuthUI(); } catch(e) { msg.innerText = e.message; } });
 
   // SCENARIO
   var scenarioView = document.getElementById("scenarioView"); var selectedScene = "home_student";
@@ -1784,8 +1602,8 @@ function renderActions(group) {
   async function loadInviteCode() { if (!authToken) return; try { var d = await apiCall("/referral/code"); var ic = document.getElementById("inviteCodeDisplay"); if (ic) ic.value = d.code; var s = await apiCall("/referral/stats"); gameState.invited = s.invited||0; safeSet3("game_state", gameState); var aic = document.getElementById("achInviteCount"); var air = document.getElementById("achInviteReward"); if (aic) aic.innerHTML = (s.invited||0) + '<br><small>已邀请</small>'; if (air) air.innerHTML = (s.rewarded||0) + '月<br><small>奖励</small>'; } catch(e) {} }
   var bci = document.getElementById("btnCopyInvite"); if (bci) bci.addEventListener("click", function() { var ic = document.getElementById("inviteCodeDisplay"); if (ic && ic.value) { navigator.clipboard.writeText(ic.value).then(function() { showToast("已复制!","success"); }); } else { showToast("请先登录","error"); } });
 
-  // CHECKIN HOOK: award points + check badges + refresh all
-  if (checkInForm) checkInForm.addEventListener("submit", function() { setTimeout(function() { addPoints(10); checkBadges(); safeSet("game_state", gameState); renderAchievements(); updateStreakUI(); updateLevelUI(); updateNotifBadge2(); }, 1000); });
+  // CHECKIN HOOK: award points
+  if (checkInForm) checkInForm.addEventListener("submit", function() { setTimeout(function() { addPoints(10); updateStreakUI(); renderAchievements(); updateLevelUI(); updateNotifBadge2(); }, 1500); });
 
   // INIT OVERRIDE
   var origInitApp3 = initApp;
@@ -1794,9 +1612,11 @@ function renderActions(group) {
     setTimeout(function() {
       updateLevelUI(); renderAchievements(); updateStreakUI();
       if (authToken) { loadInviteCode(); updateNotifBadge2(); }
-      if (profile && !safeGet3("scene_shown") && !safeGet3("user_scene") && scenarioView && document.body.contains(scenarioView)) {
+      if (profile && !safeGet3("scene_shown") && !safeGet3("user_scene")) {
         setTimeout(function() { if (scenarioView) { scenarioView.style.display = ""; mainAppView.style.display = "none"; safeSet3("scene_shown", true); } }, 400);
       }
     }, 200);
   };
+
+  } catch(_err) { var ls = document.getElementById('loadingScreen'); if (ls) { ls.style.display = ''; ls.style.background = '#ff0000'; ls.textContent = 'Error: ' + (_err.message || _err) + ' at line ' + (_err.lineNumber || '?'); } }
 });

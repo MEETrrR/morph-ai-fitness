@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morph.AI</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+<script src="ai.js"></script>
+</head>
+<body>
+<div id="loadingScreen" style="position:fixed;top:0;left:0;right:0;bottom:0;background:#0f0f11;display:flex;align-items:center;justify-content:center;z-index:9999;color:white;font-size:2rem;">Morph.AI</div>
+<div id="testOutput" style="position:fixed;top:50%;left:0;right:0;text-align:center;color:lime;z-index:10000;font-size:1.5rem;display:none;">JS RUNNING</div>
+<script>
+setTimeout(function(){ document.getElementById('testOutput').style.display='block'; }, 500);
+window.onerror = function(m,u,l){ document.getElementById('loadingScreen').innerHTML='<div style="color:red">ERROR: '+m+'<br>Line: '+l+'</div>'; };
+</script>
+</body></html>

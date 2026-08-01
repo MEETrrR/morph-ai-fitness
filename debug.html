@@ -1,0 +1,25 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Debug</title></head>
+<body style="background:#0f0f11;color:white;font-family:monospace;padding:2rem;">
+<h2>Debug Output</h2>
+<pre id="log"></pre>
+<script>
+var log = document.getElementById('log');
+function w(msg) { log.textContent += msg + '\n'; }
+window.onerror = function(msg, url, line, col, err) { w('ERROR: ' + msg + ' at line ' + line); };
+w('Starting...');
+
+// Try loading app.js
+var s = document.createElement('script');
+s.src = '/app.js';
+s.onload = function() { w('app.js loaded OK'); };
+s.onerror = function() { w('app.js FAILED to load'); };
+document.body.appendChild(s);
+
+// Try loading ai.js
+var s2 = document.createElement('script');
+s2.src = '/ai.js';
+s2.onload = function() { w('ai.js loaded OK'); };
+s2.onerror = function() { w('ai.js FAILED to load'); };
+document.body.appendChild(s2);
+</script>
+</body></html>
